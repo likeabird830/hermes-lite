@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Hermes Lite - Ultra lightweight Discord bot
+Hermes Lite - Ultra lightweight Discord bot for Render
 Only Discord + DeepSeek + Tavily, ~50MB RAM
 """
 
@@ -9,6 +9,7 @@ import os
 import asyncio
 import traceback
 import datetime
+import threading
 
 LOG_FILE = "/tmp/hermes_lite.log"
 
@@ -199,6 +200,28 @@ async def ask_cmd(ctx, *, question):
             await ctx.send(f"Error: {str(e)[:200]}")
 
 log("Bot setup complete, starting bot.run()...")
+
+# === Render Web Service: start dummy HTTP server on PORT ===
+def start_http_server():
+    """Minimal HTTP server for Render health check - returns 200 on /"""
+    port = int(os.environ.get('PORT', 10000))
+    from http.server import HTTPServer, BaseHTTPRequestHandler
+    
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b'OK')
+        def log_message(self, *args):
+            pass  # silence logs
+    
+    server = HTTPServer(('0.0.0.0', port), Handler)
+    log(f"HTTP health check server started on port {port}")
+    server.serve_forever()
+
+http_thread = threading.Thread(target=start_http_server, daemon=True)
+http_thread.start()
+# ================================================================
 
 try:
     bot.run(DISCORD_TOKEN, log_handler=None)
