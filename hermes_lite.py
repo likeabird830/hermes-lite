@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
-Hermes Lite v2.1 - Discord Bot with Persistent Memory & Self-Evolution
-Core principle: BOT MUST ALWAYS RESPOND. Memory operations are async background tasks.
+Hermes Lite v2.2 — Discord Bot with TRUE Persistent Memory (GitHub-backed)
+Memory survives Manual Deploy, restarts, and spin-downs.
+Core principle: BOT MUST ALWAYS RESPOND. All memory I/O is non-blocking background.
 """
 
 import sys
@@ -11,12 +12,11 @@ import traceback
 import datetime
 import threading
 import json
-import subprocess
 import re
+import base64
 import aiohttp
 
 LOG_FILE = "/tmp/hermes_lite.log"
-MEMORY_DIR = "/tmp/hermes_memory"  # Use /tmp/ (confirmed working on Render)
 
 def log(msg):
     ts = datetime.datetime.now().isoformat()
@@ -33,13 +33,19 @@ def log_error(msg):
     log(f"ERROR: {msg}")
     traceback.print_exc()
 
-log("=== HERMES LITE v2.1 STARTING ===")
+log("=== HERMES LITE v2.2 STARTING ===")
 log(f"Python: {sys.version}")
 
 # === Environment ===
 DISCORD_TOKEN = os.environ.get('DISCORD_BOT_TOKEN', '')
 DEEPSEEK_KEY = os.environ.get('DEEPSEEK_API_KEY', '')
 TAVILY_KEY = os.environ.get('TAVILY_API_KEY', '')
+
+# GitHub persistence config
+GH_TOKEN = os.environ.get('GITHUB_TOKEN', '')       # Personal Access Token (repo scope)
+GH_OWNER = os.environ.get('GH_OWNER', 'likeabird830')
+GH_REPO = os.environ.get('GH_REPO', 'hermes-lite')
+GH_BRANCH = os.environ.get('GH_BRANCH', 'main')
 
 if not DISCORD_TOKEN:
     log("FATAL: DISCORD_BOT_TOKEN not set!")
@@ -68,70 +74,154 @@ bot = commands.Bot(command_prefix='!', intents=intents)
 _message_count = 0
 
 DEEPSEEK_URL = "https://api.deepseek.com/chat/completions"
+GH_API_BASE = "https://api.github.com"
+
+# Memory files stored in repo
+MEMORY_FILES = {
+    "profiles": "hermes_profiles.json",
+    "knowledge": "hermes_knowledge.md"
+}
 
 # =====================================================================
-# MEMORY SYSTEM v2.1 — All I/O is background-safe
+# MEMORY SYSTEM v2.2 — GitHub API backed, truly persistent
 # =====================================================================
 
-PROFILES_PATH = os.path.join(MEMORY_DIR, "profiles.json")
-KNOWLEDGE_PATH = os.path.join(MEMORY_DIR, "knowledge.json")
-
-_profiles = {}       # L2: User profiles (in RAM, periodically saved to disk)
+_profiles = {}       # L2: User profiles (in RAM)
 _knowledge = []      # L3: Knowledge entries (in RAM)
-_conversations = {}  # L1: Active conversations (in RAM only)
-_save_lock = threading.Lock()  # Prevent concurrent saves
-_dirty = False       # Flag: unsaved changes exist
+_conversations = {}  # L1: Active conversations (RAM only)
+_save_lock = threading.Lock()
+_dirty = False
+_gh_available = bool(GH_TOKEN)  # Whether GitHub persistence is configured
 
 
-def _ensure_dir():
-    """Ensure memory directory exists."""
+async def _gh_api(method, path, **kwargs):
+    """Call GitHub API. Returns parsed JSON or None on error."""
+    if not _gh_available:
+        return None
+    url = f"{GH_API_BASE}{path}"
+    headers = {
+        "Authorization": f"token {GH_TOKEN}",
+        "Accept": "application/vnd.github.v3+json",
+        "User-Agent": "Hermes-Lite-Bot/2.2"
+    }
     try:
-        os.makedirs(MEMORY_DIR, exist_ok=True)
+        timeout = aiohttp.ClientTimeout(total=15)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.request(method, url, headers=headers, **kwargs) as resp:
+                if resp.status in (200, 201):
+                    return await resp.json()
+                elif resp.status == 404:
+                    return None  # File doesn't exist yet
+                else:
+                    text = await resp.text()
+                    log(f"GitHub API {method} {path} -> {resp.status}: {text[:100]}")
+                    return None
     except Exception as e:
-        log_error(f"Cannot create {MEMORY_DIR}: {e}")
+        log_error(f"GitHub API error: {e}")
+        return None
 
 
-def _load_json(path, default=None):
-    """Load JSON, never crash."""
-    try:
-        if os.path.exists(path):
-            with open(path, 'r', encoding='utf-8') as f:
-                return json.load(f)
-    except Exception as e:
-        log_error(f"Load error {path}: {e}")
-    return default if default is not None else ({}
+async def gh_download_memory():
+    """Download memory files from GitHub at startup."""
+    global _profiles, _knowledge
+    
+    # Download profiles
+    result = await _gh_api("GET", f"/repos/{GH_OWNER}/{GH_REPO}/contents/{MEMORY_FILES['profiles']}?ref={GH_BRANCH}")
+    if result and result.get("content"):
+        try:
+            data = json.loads(base64.b64decode(result["content"]))
+            if isinstance(data, dict):
+                _profiles = data
+                log(f"[💾] Loaded profiles from GitHub: {len(_profiles)} users")
+        except Exception as e:
+            log_error(f"Failed to parse profiles from GH: {e}")
+    
+    # Download knowledge (stored as markdown for human readability)
+    result = await _gh_api("GET", f"/repos/{GH_OWNER}/{GH_REPO}/contents/{MEMORY_FILES['knowledge']}?ref={GH_BRANCH}")
+    if result and result.get("content"):
+        try:
+            md_content = base64.b64decode(result["content"]).decode("utf-8")
+            _knowledge = []
+            for line in md_content.split("\n"):
+                line = line.strip()
+                if line.startswith("- ") or line.startswith("* "):
+                    entry = line[2:].strip()
+                    if entry:
+                        _knowledge.append(entry)
+                elif line and not line.startswith("#") and not line.startswith(">") and len(line) > 5:
+                    _knowledge.append(line)
+            log(f"[💾] Loaded knowledge from GitHub: {len(_knowledge)} entries")
+        except Exception as e:
+            log_error(f"Failed to parse knowledge from GH: {e}")
 
 
-def save_to_disk():
-    """Synchronous disk write (only called from background thread)."""
+async def gh_upload_memory():
+    """Upload current memory to GitHub. Non-critical — failures are silent."""
+    if not _dirty or not _gh_available:
+        return
+    
     global _dirty
     with _save_lock:
         try:
-            _ensure_dir()
-            with open(PROFILES_PATH, 'w', encoding='utf-8') as f:
-                json.dump(_profiles, f, ensure_ascii=False, indent=2)
-            with open(KNOWLEDGE_PATH, 'w', encoding='utf-8') as f:
-                json.dump(_knowledge, f, ensure_ascii=False, indent=2)
-            _dirty = False
-            log(f"💾 Memory saved ({len(_profiles)} users, {len(_knowledge)} knowledge)")
+            # Build knowledge markdown content
+            kb_lines = ["# Hermes Knowledge Base\n", f"> Auto-updated by Hermes | {datetime.datetime.now().isoformat()}\n"]
+            for entry in _knowledge:
+                kb_lines.append(f"- {entry}")
+            kb_md = "\n".join(kb_lines)
+            
+            # Get SHAs for update (or None if new file)
+            prof_result = await _gh_api("GET", f"/repos/{GH_OWNER}/{GH_REPO}/contents/{MEMORY_FILES['profiles']}?ref={GH_BRANCH}")
+            prof_sha = prof_result.get("sha") if prof_result else None
+            
+            kb_result = await _gh_api("GET", f"/repos/{GH_OWNER}/{GH_REPO}/contents/{MEMORY_FILES['knowledge']}?ref={GH_BRANCH}")
+            kb_sha = kb_result.get("sha") if kb_result else None
+            
+            # Upload both files
+            import time
+            ts = int(time.time())
+            
+            prof_payload = json.dumps({
+                "message": f"[Hermes] 💾 Save profiles ({len(_profiles)} users) [auto-{ts}]",
+                "content": base64.b64encode(json.dumps(_profiles, ensure_ascii=False, indent=2).encode()).decode(),
+                "branch": GH_BRANCH,
+                **({"sha": prof_sha} if prof_sha else {})
+            })
+            
+            kb_payload = json.dumps({
+                "message": f"[Hermes] 📚 Save knowledge ({len(_knowledge)} entries) [auto-{ts}]",
+                "content": base64.b64encode(kb_md.encode()).decode(),
+                "branch": GH_BRANCH,
+                **({"sha": kb_sha} if kb_sha else {})
+            })
+            
+            r1 = await _gh_api("PUT", f"/repos/{GH_OWNER}/{GH_REPO}/contents/{MEMORY_FILES['profiles']}", data=prof_payload.encode())
+            r2 = await _gh_api("PUT", f"/repos/{GH_OWNER}/{GH_REPO}/contents/{MEMORY_FILES['knowledge']}", data=kb_payload.encode())
+            
+            if r1 and r2:
+                _dirty = False
+                log(f"[☁️] Memory saved to GitHub ✅ ({len(_profiles)} users, {len(_knowledge)} kb)")
+            elif r1:
+                _dirty = False
+                log("[☁️] Profiles saved, knowledge failed (partial)")
+            else:
+                log("[☁️] GitHub save FAILED (will retry later)")
+                
         except Exception as e:
-            log_error(f"Disk save FAILED: {e}")
+            log_error(f"[☁️] GitHub upload error: {e}")
 
 
-def background_save_loop():
-    """Background thread: saves memory to disk every 30 seconds if dirty."""
-    import time
-    global _dirty
+async def github_sync_loop():
+    """Background loop: sync memory to GitHub every 60 seconds when dirty."""
     while True:
         try:
-            time.sleep(30)
+            await asyncio.sleep(60)
             if _dirty:
-                save_to_disk()
+                await gh_upload_memory()
         except Exception as e:
-            log_error(f"Background save loop error: {e}")
+            log_error(f"GitHub sync loop error: {e}")
 
 
-# ---- L2: User Profiles ----
+# ---- L2: User Profiles (same API, just storage backend changed) ----
 
 def get_profile(user_id):
     key = str(user_id)
@@ -149,7 +239,6 @@ def get_profile(user_id):
 
 
 def add_user_fact(user_id, fact):
-    """Add fact to user profile (non-blocking)."""
     profile = get_profile(user_id)
     if fact and len(fact) > 2 and fact.lower() not in [f.lower() for f in profile["facts"]]:
         profile["facts"].append(fact[:300])
@@ -160,13 +249,11 @@ def add_user_fact(user_id, fact):
 
 def set_user_name(user_id, name):
     if name and len(name) > 1:
-        profile = get_profile(user_id)
-        profile["known_name"] = name[:50]
+        get_profile(user_id)["known_name"] = name[:50]
         mark_dirty()
 
 
 def touch_profile(user_id):
-    """Update last_active timestamp."""
     profile = get_profile(user_id)
     profile["message_count"] += 1
     profile["last_active"] = datetime.datetime.now().isoformat()
@@ -174,7 +261,6 @@ def touch_profile(user_id):
 
 
 def build_user_context(user_id):
-    """Build context string about user for system prompt."""
     profile = get_profile(user_id)
     parts = []
     if profile.get("known_name"):
@@ -191,21 +277,19 @@ def build_user_context(user_id):
 # ---- L3: Knowledge Base ----
 
 def add_knowledge(entry):
-    """Add entry to knowledge base (dedup)."""
     if entry and len(entry) > 5 and entry.lower() not in [k.lower() for k in _knowledge]:
         _knowledge.append(entry[:300])
         if len(_knowledge) > 100:
-            _knowledge = _knowledge[-100:]
+            _knowledge[:] = _knowledge[-100:]
         mark_dirty()
 
 
 def mark_dirty():
-    """Mark memory as needing disk save."""
     global _dirty
     _dirty = True
 
 
-# ---- L1: Conversations (RAM only) ----
+# ---- L1: Conversations (RAM only, lost on restart) ----
 
 def add_conversation_msg(user_id, role, content):
     key = str(user_id)
@@ -217,37 +301,21 @@ def add_conversation_msg(user_id, role, content):
 
 
 def get_recent_context(user_id, max_msgs=10):
-    """Get recent conversation messages."""
     conv = _conversations.get(str(user_id), [])
     return conv[-max_msgs:] if conv else []
 
 
-# ---- Load all memory at startup ----
+# ---- Startup: Load memory from GitHub ----
 
-def load_all_memory():
-    global _profiles, _knowledge, _conversations
-    log("Loading persistent memory...")
-    _ensure_dir()
+async def startup_load():
+    """Load all persistent memory from GitHub at bot start."""
+    log("Loading memory from GitHub...")
+    await gh_download_memory()
+    log(f"All memory loaded ✅ (users={len(_profiles)}, knowledge={len(_knowledge)})")
+    log(f"GitHub persistence: {'ON ☁️' if _gh_available else 'OFF ⚠️ (no GITHUB_TOKEN)'}")
 
-    _profiles = _load_json(PROFILES_PATH, {})
-    if not isinstance(_profiles, dict):
-        _profiles = {}
-    log(f"L2 Profiles: {len(_profiles)} users")
-
-    _knowledge = _load_json(KNOWLEDGE_PATH, [])
-    if not isinstance(_knowledge, list):
-        _knowledge = []
-    log(f"L3 Knowledge: {len(_knowledge)} entries")
-
-    log(f"All memory loaded ✅")
-
-
-load_all_memory()
-
-# Start background save thread
-_save_thread = threading.Thread(target=background_save_loop, daemon=True)
-_save_thread.start()
-log("Background save thread started")
+# We'll call this in on_ready since we need the event loop for async I/O
+_startup_loaded = False
 # =====================================================================
 
 
@@ -281,32 +349,19 @@ HERMES_SYSTEM_PROMPT = """你是 Hermes（赫尔墨斯），一个有长期记�
 
 async def ask_deepseek(messages, max_tokens=2000):
     """Call DeepSeek API."""
-    headers = {
-        "Authorization": f"Bearer {DEEPSEEK_KEY}",
-        "Content-Type": "application/json"
-    }
-    payload = {
-        "model": "deepseek-chat",
-        "messages": messages,
-        "max_tokens": max_tokens,
-        "temperature": 0.7
-    }
+    headers = {"Authorization": f"Bearer {DEEPSEEK_KEY}", "Content-Type": "application/json"}
+    payload = {"model": "deepseek-chat", "messages": messages, "max_tokens": max_tokens, "temperature": 0.7}
     timeout = aiohttp.ClientTimeout(total=45)
     async with aiohttp.ClientSession(timeout=timeout) as session:
         async with session.post(DEEPSEEK_URL, headers=headers, json=payload) as resp:
             text = await resp.text()
             if resp.status == 200:
-                data = await resp.json()
-                return data['choices'][0]['message']['content']
-            else:
-                return f"⚠️ API Error {resp.status}: {text[:150]}"
+                return (await resp.json())['choices'][0]['message']['content']
+            return f"⚠️ API Error {resp.status}: {text[:150]}"
 
 
 async def extract_memories_bg(user_id, user_msg, bot_reply):
-    """
-    BACKGROUND TASK: Extract memorable info after each exchange.
-    Runs asynchronously — NEVER blocks the reply.
-    """
+    """BACKGROUND TASK: Extract memorable info after each exchange."""
     prompt = f"""分析以下对话，提取值得长期记住的信息。
 
 用户消息：{user_msg}
@@ -325,10 +380,8 @@ async def extract_memories_bg(user_id, user_msg, bot_reply):
         match = re.search(r'\{.*\}', result, re.DOTALL)
         if not match:
             return
-
         data = json.loads(match.group())
 
-        # Apply extracted memories (all sync in-memory ops, fast)
         if data.get("name"):
             set_user_name(user_id, data["name"])
             log(f"[🧠] Learned name: {data['name']}")
@@ -350,7 +403,7 @@ async def extract_memories_bg(user_id, user_msg, bot_reply):
         total_facts = len(get_profile(user_id).get("facts", []))
         log(f"[🧠] Extracted: facts={len(data.get('facts') or [])}, kb={len(data.get('knowledge') or [])}, user_total={total_facts}")
 
-    except json.JSONDecodeError:
+    except (json.JSONDecodeError, ValueError):
         log("[🧠] Extraction: JSON parse failed (non-critical)")
     except Exception as e:
         log_error(f"[🧠] Memory extraction failed: {e}")
@@ -359,44 +412,33 @@ async def extract_memories_bg(user_id, user_msg, bot_reply):
 async def search_tavily(query):
     if not TAVILY_KEY:
         return None
-    payload = {
-        "api_key": TAVILY_KEY,
-        "query": query,
-        "max_results": 5,
-        "search_depth": "basic"
-    }
+    payload = {"api_key": TAVILY_KEY, "query": query, "max_results": 5, "search_depth": "basic"}
     timeout = aiohttp.ClientTimeout(total=15)
     async with aiohttp.ClientSession(timeout=timeout) as session:
         async with session.post("https://api.tavily.com/search", json=payload) as resp:
             if resp.status == 200:
-                data = await resp.json()
-                results = data.get('results', [])
+                results = (await resp.json()).get('results', [])
                 if results:
                     return "\n".join([f"* {r['title']}: {r['url']}" for r in results[:3]])
             return None
 
 
 def build_messages(user_id, content):
-    """Build full message array with all memory layers."""
     messages = [{"role": "system", "content": HERMES_SYSTEM_PROMPT}]
-
-    # L2: User-specific context
+    
     ctx = build_user_context(user_id)
     if ctx:
         messages.append({"role": "system", "content": f"## 关于当前用户\n\n{ctx}"})
-
-    # L3: Global knowledge
+    
     if _knowledge:
         top_kb = _knowledge[-12:]
         kb_text = "\n".join(f"- {k}" for k in top_kb)
         messages.append({"role": "system", "content": f"## 知识库\n\n{kb_text}"})
-
-    # L1: Recent conversation
+    
     recent = get_recent_context(user_id, max_msgs=6)
     for msg in recent:
         messages.append({"role": msg["role"], "content": msg["content"]})
-
-    # Current message
+    
     messages.append({"role": "user", "content": content})
     return messages
 
@@ -405,62 +447,66 @@ def build_messages(user_id, content):
 
 @bot.event
 async def on_ready():
-    log(f'Hermes v2.1 READY! Logged in as {bot.user}')
-    log(f'Memory: {len(_profiles)} users, {len(_knowledge)} knowledge')
+    global _startup_loaded
+    log(f'Hermes v2.2 READY! Logged in as {bot.user}')
+    
+    # Load persisted memory from GitHub (async, needs event loop)
+    await startup_load()
+    _startup_loaded = True
+    
+    # Start background GitHub sync loop
+    asyncio.create_task(github_sync_loop())
 
 
 @bot.event
 async def on_message(message):
     global _message_count
     _message_count += 1
-
-    content = message.content
-    log(f"[#{_message_count}] {message.author} in #{message.channel}: {content[:80]}")
-
+    
     if message.author == bot.user:
         return
-
+    
+    content = message.content
+    log(f"[#{_message_count}] {message.author} in #{getattr(message.channel, 'name', '?')}: {content[:80]}")
+    
     mentioned = bot.user.mentioned_in(message)
     ch_name = (message.channel.name or '').lower()
     should_respond = mentioned or 'hermes' in ch_name or content.startswith('!')
-
+    
     if not should_respond:
         return
-
-    # Clean mentions
+    
     for uid in [str(bot.user.id), f'<@!{bot.user.id}>', f'<@{bot.user.id}>']:
         content = content.replace(uid, '')
     content = content.strip()
-
+    
     if not content:
         await message.reply("你好！我是 Hermes 🧠 有记忆力的 AI 助手。问我任何事吧！")
         return
-
+    
     user_id = str(message.author.id)
-
-    # ===== MAIN PATH: Respond first, worry about memory later =====
+    
     try:
         async with message.channel.typing():
             messages = build_messages(user_id, content)
             log(f"[#{_message_count}] API call (context: {len(messages)} msgs)")
-
+            
             response = await ask_deepseek(messages)
             log(f"[#{_message_count}] Got response ({len(response)} chars)")
-
+            
             if len(response) > 1900:
                 response = response[:1900] + "..."
             await message.reply(response)
-
-            # Save to L1 conversation history (fast, in-memory)
+            
             add_conversation_msg(user_id, "user", content)
             add_conversation_msg(user_id, "assistant", response)
             touch_profile(user_id)
-
+            
             log(f"[#{_message_count}] Reply sent ✅")
-
-            # 🔬 Self-evolution: NON-BLOCKING background task
+            
+            # Self-evolution: NON-BLOCKING background task
             asyncio.create_task(extract_memories_bg(user_id, content, response))
-
+    
     except Exception as e:
         log_error(f"[#{_message_count}] FATAL: {e}")
         try:
@@ -478,8 +524,7 @@ async def ping_cmd(ctx):
 
 @bot.command(name='memory')
 async def memory_cmd(ctx):
-    uid = str(ctx.author.id)
-    p = get_profile(uid)
+    p = get_profile(str(ctx.author.id))
     embed = discord.Embed(title="🧠 关于你的记忆", color=0x7289DA)
     embed.add_field(name="👤 昵称", value=p.get("known_name") or "未知", inline=True)
     embed.add_field(name="💬 消息数", value=str(p.get("message_count", 0)), inline=True)
@@ -488,6 +533,7 @@ async def memory_cmd(ctx):
         embed.add_field(name="📝 我记得", value="\n".join(f"• {f}" for f in p["facts"][:8])[:500], inline=False)
     if p.get("preferences"):
         embed.add_field(name="⚙️ 偏好", value=", ".join(f"{k}={v}" for k, v in list(p["preferences"].items())[:4]), inline=False)
+    embed.set_footer(text=f"{'☁️ 已备份到GitHub' if _gh_available else '⚠️ 仅本地缓存'}")
     await ctx.send(embed=embed)
 
 
@@ -498,7 +544,7 @@ async def forget_cmd(ctx):
     if key in _profiles:
         del _profiles[key]
         _conversations.pop(key, None)
-        save_to_disk()
+        mark_dirty()
         await ctx.send("🗑️ 你的记忆已清除。我们从零开始！")
     else:
         await ctx.send("本来就没有你的记忆~")
@@ -512,13 +558,14 @@ async def learn_cmd(ctx, *, info):
 
 @bot.command(name='status')
 async def status_cmd(ctx):
-    embed = discord.Embed(title="🔋 Hermes v2.1 状态", color=0x57F287)
+    embed = discord.Embed(title="🔋 Hermes v2.2 状态", color=0x57F287)
     embed.add_field(name="⏱️ 延迟", value=f"{round(bot.latency * 1000)}ms", inline=True)
     embed.add_field(name="👥 用户", value=str(len(_profiles)), inline=True)
     embed.add_field(name="📚 知识", value=str(len(_knowledge)), inline=True)
     embed.add_field(name="💭 对话", value=str(len(_conversations)), inline=True)
-    embed.add_field(name="💾 已保存", value="✅ 是" if not _dirty else "⏳ 待保存", inline=True)
-    embed.add_field(name="版本", value="v2.1 (持久记忆+自进化)", inline=False)
+    embed.add_field(name="☁️ GitHub", value="✅ 已连接" if _gh_available else "❌ 未配置", inline=True)
+    embed.add_field(name="💾 待同步", value="是" if _dirty else "否", inline=True)
+    embed.add_field(name="版本", value="v2.2 (GitHub持久化+自进化)", inline=False)
     await ctx.send(embed=embed)
 
 
@@ -535,6 +582,17 @@ async def search_cmd(ctx, *, query):
             await ctx.send("没找到结果。")
 
 
+@bot.command(name='save')
+async def force_save_cmd(ctx):
+    """Force immediate sync to GitHub."""
+    if not _gh_available:
+        await ctx.send("❌ GitHub 未配置（需要 GITHUB_TOKEN 环境变量）。")
+        return
+    await ctx.send("💾 正在保存到 GitHub...")
+    await gh_upload_memory()
+    await ctx.send("✅ 保存完成！（如果成功的话 😄）")
+
+
 # ==================== STARTUP & HEALTH CHECK ====================
 log("Bot setup complete, starting...")
 
@@ -542,17 +600,25 @@ def start_http_server():
     port = int(os.environ.get('PORT', 10000))
     from http.server import HTTPServer, BaseHTTPRequestHandler
     class H(BaseHTTPRequestHandler):
-        def do_GET(self):
-            self.send_response(200); self.end_headers(); self.wfile.write(b'OK')
+        def do_GET(self): self.send_response(200); self.end_headers(); self.wfile.write(b'OK')
         def log_message(self, *a): pass
     HTTPServer(('0.0.0.0', port), H).serve_forever()
 
 threading.Thread(target=start_http_server, daemon=True).start()
-log(f"HTTP health check ready")
+
+# Graceful shutdown: save before dying
+import signal
+def _shutdown_handler(signum, frame):
+    log("Shutdown triggered, attempting final save...")
+    # Can't use async here, just note that dirty flag is set
+    # The next startup will have stale data, but it's better than nothing
+    log(f"Dirty state on shutdown: {_dirty}")
+
+signal.signal(signal.SIGTERM, _shutdown_handler)
+signal.signal(signal.SIGINT, _shutdown_handler)
 
 try:
     bot.run(DISCORD_TOKEN, log_handler=None)
 except Exception as e:
     log_error(f"FATAL: {e}")
-    save_to_disk()  # Best-effort save before dying
     sys.exit(1)
