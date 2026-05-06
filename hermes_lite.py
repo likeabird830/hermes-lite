@@ -157,10 +157,11 @@ async def gh_download_memory():
 
 async def gh_upload_memory():
     """Upload current memory to GitHub. Non-critical — failures are silent."""
+    global _dirty
+    
     if not _dirty or not _gh_available:
         return
     
-    global _dirty
     with _save_lock:
         try:
             # Build knowledge markdown content
