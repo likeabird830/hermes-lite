@@ -451,8 +451,12 @@ async def on_ready():
     global _startup_loaded
     log(f'Hermes v2.2 READY! Logged in as {bot.user}')
     
-    # Load persisted memory from GitHub (async, needs event loop)
-    await startup_load()
+    # Load persisted memory from GitHub (non-blocking: failure won't kill the bot)
+    try:
+        await startup_load()
+    except Exception as e:
+        log_error(f"Memory load FAILED (bot still working): {e}")
+    
     _startup_loaded = True
     
     # Start background GitHub sync loop
@@ -621,5 +625,5 @@ signal.signal(signal.SIGINT, _shutdown_handler)
 try:
     bot.run(DISCORD_TOKEN, log_handler=None)
 except Exception as e:
-    log_error(f"FATAL: {e}")
+    log_error(f"FATAL: bot.run() crashed: {e}")
     sys.exit(1)
