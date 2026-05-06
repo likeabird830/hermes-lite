@@ -140,9 +140,13 @@ async def on_message(message):
         return
     
     mentioned = bot.user.mentioned_in(message)
-    log(f"[MSG #{_message_count}] mentioned={mentioned}")
     
-    if not mentioned:
+    # Respond if: mentioned OR channel name contains 'hermes' OR starts with !
+    channel_name = message.channel.name.lower() if hasattr(message.channel, 'name') else ''
+    should_respond = mentioned or 'hermes' in channel_name or content.startswith('!')
+    log(f"[MSG #{_message_count}] mentioned={mentioned} channel={channel_name} should_respond={should_respond}")
+    
+    if not should_respond:
         return
     
     content = message.content
