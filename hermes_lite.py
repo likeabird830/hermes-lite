@@ -68,11 +68,16 @@ from discord.ext import commands
 
 log("All imports OK, setting up bot...")
 
-# Bot setup
+# Bot setup - enable all needed intents
 intents = discord.Intents.default()
 intents.message_content = True
+intents.guilds = True
+intents.messages = True
 
 bot = commands.Bot(command_prefix='!', intents=intents)
+
+# Track if messages are arriving at all
+_message_count = 0
 
 DEEPSEEK_URL = "https://api.deepseek.com/chat/completions"
 
@@ -126,10 +131,18 @@ async def on_ready():
 
 @bot.event
 async def on_message(message):
+    global _message_count
+    _message_count += 1
+    # DIAGNOSTIC: Log every single message to confirm gateway is alive
+    log(f"[MSG #{_message_count}] from {message.author} in #{message.channel}: {message.content[:80]}")
+    
     if message.author == bot.user:
         return
     
-    if not bot.user.mentioned_in(message):
+    mentioned = bot.user.mentioned_in(message)
+    log(f"[MSG #{_message_count}] mentioned={mentioned}")
+    
+    if not mentioned:
         return
     
     content = message.content
