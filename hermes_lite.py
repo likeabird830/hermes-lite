@@ -353,21 +353,29 @@ async def ask_deepseek(messages, max_tokens=2000, max_retries=2):
     headers = {"Authorization": f"Bearer {DEEPSEEK_KEY}", "Content-Type": "application/json"}
     payload = {"model": "deepseek-chat", "messages": messages, "max_tokens": max_tokens, "temperature": 0.7}
     
+    last_error = ""
     for attempt in range(max_retries + 1):
         try:
-            timeout = aiohttp.ClientTimeout(total=45)
+            # Longer timeout: Render(US) → DeepSeek(CN) can take up to 90s
+            timeout = aiohttp.ClientTimeout(total=90, connect=30)
             async with aiohttp.ClientSession(timeout=timeout) as session:
                 async with session.post(DEEPSEEK_URL, headers=headers, json=payload) as resp:
                     text = await resp.text()
                     if resp.status == 200:
                         return (await resp.json())['choices'][0]['message']['content']
-                    return f"⚠️ API Error {resp.status}: {text[:150]}"
-        except (asyncio.CancelledError, asyncio.TimeoutError, Exception) as e:
+                    last_error = f"API Error {resp.status}: {text[:100]}"
+        except asyncio.TimeoutError:
+            last_error = "Timeout"
+            log(f"[API] Retry {attempt+1}/{max_retries}: Timeout")
+            await asyncio.sleep(2 * (attempt + 1))
+            continue
+        except (asyncio.CancelledError, Exception) as e:
+            last_error = f"{type(e).__name__}"
             if attempt < max_retries:
-                log(f"[API] Retry {attempt+1}/{max_retries}: {type(e).__name__}")
-                await asyncio.sleep(1 * (attempt + 1))
+                log(f"[API] Retry {attempt+1}/{max_retries}: {last_error}")
+                await asyncio.sleep(2)
                 continue
-            return f"⚠️ API failed after {max_retries+1} tries: {type(e).__name__}"
+    return f"⚠️ AI暂时连接不上，请稍后再试 ({last_error})"
 
 
 async def extract_memories_bg(user_id, user_msg, bot_reply):
