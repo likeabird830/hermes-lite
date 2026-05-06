@@ -133,8 +133,11 @@ async def on_ready():
 async def on_message(message):
     global _message_count
     _message_count += 1
+    
+    # Extract content early so we can use it in checks
+    content = message.content
     # DIAGNOSTIC: Log every single message to confirm gateway is alive
-    log(f"[MSG #{_message_count}] from {message.author} in #{message.channel}: {message.content[:80]}")
+    log(f"[MSG #{_message_count}] from {message.author} in #{message.channel}: {content[:80]}")
     
     if message.author == bot.user:
         return
@@ -149,41 +152,39 @@ async def on_message(message):
     if not should_respond:
         return
     
-    content = message.content
-    for uid in [bot.user.id, f'<@!{bot.user.id}>']:
+    # Clean mentions from content
+    for uid in [str(bot.user.id), f'<@!{bot.user.id}>', f'<@{bot.user.id}>']:
         content = content.replace(uid, '')
     content = content.strip()
     
+    log(f"[MSG #{_message_count}] Processing prompt: '{content[:100]}'")
+    
     if not content:
-        await message.reply("Hi! I'm Hermes Lite. Ask me anything or use `!search <query>`.")
+        try:
+            await message.reply("Hi! I'm Hermes Lite. Ask me anything or use `!search <query>`.")
+        except Exception as e:
+            log_error(f"Failed to reply: {e}")
         return
     
-    async with message.channel.typing():
-        is_search = content.lower().startswith(('search ', '!search ', '/search '))
-        
-        if is_search:
-            query = content.split(' ', 1)[-1].strip()
-            search_results = await search_tavily(query)
-            if search_results:
-                prompt = f"Search results for '{query}':\n{search_results}\n\nAnswer based on these results."
-            else:
-                prompt = query
-        else:
-            prompt = content
-        
-        messages = [
-            {"role": "system", "content": "You are Hermes, a helpful and concise AI assistant."},
-            {"role": "user", "content": prompt}
-        ]
-        
-        try:
-            response = await ask_deepseek(messages)
+    try:
+        async with message.channel.typing():
+            log(f"[MSG #{_message_count}] Calling DeepSeek API...")
+            response = await ask_deepseek([
+                {"role": "system", "content": "You are Hermes, a helpful and concise AI assistant."},
+                {"role": "user", "content": content}
+            ])
+            log(f"[MSG #{_message_count}] DeepSeek responded ({len(response)} chars)")
+            
             if len(response) > 1900:
                 response = response[:1900] + "..."
             await message.reply(response)
-        except Exception as e:
-            log_error(f"Error in on_message: {e}")
-            await message.reply(f"Error: {str(e)[:200]}")
+            log(f"[MSG #{_message_count}] Reply sent successfully!")
+    except Exception as e:
+        log_error(f"[MSG #{_message_count}] Error processing: {e}")
+        try:
+            await message.reply(f"Sorry, I hit an error: {str(e)[:200]}")
+        except:
+            pass
 
 @bot.command(name='search')
 async def search_cmd(ctx, *, query):
