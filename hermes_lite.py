@@ -348,17 +348,26 @@ HERMES_SYSTEM_PROMPT = """你是 Hermes（赫尔墨斯），一个有长期记�
 5. 不要说"我不会存储数据"之类的话——你确实有记忆功能"""
 
 
-async def ask_deepseek(messages, max_tokens=2000):
-    """Call DeepSeek API."""
+async def ask_deepseek(messages, max_tokens=2000, max_retries=2):
+    """Call DeepSeek API with retry on failure/cancellation."""
     headers = {"Authorization": f"Bearer {DEEPSEEK_KEY}", "Content-Type": "application/json"}
     payload = {"model": "deepseek-chat", "messages": messages, "max_tokens": max_tokens, "temperature": 0.7}
-    timeout = aiohttp.ClientTimeout(total=45)
-    async with aiohttp.ClientSession(timeout=timeout) as session:
-        async with session.post(DEEPSEEK_URL, headers=headers, json=payload) as resp:
-            text = await resp.text()
-            if resp.status == 200:
-                return (await resp.json())['choices'][0]['message']['content']
-            return f"⚠️ API Error {resp.status}: {text[:150]}"
+    
+    for attempt in range(max_retries + 1):
+        try:
+            timeout = aiohttp.ClientTimeout(total=45)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.post(DEEPSEEK_URL, headers=headers, json=payload) as resp:
+                    text = await resp.text()
+                    if resp.status == 200:
+                        return (await resp.json())['choices'][0]['message']['content']
+                    return f"⚠️ API Error {resp.status}: {text[:150]}"
+        except (asyncio.CancelledError, asyncio.TimeoutError, Exception) as e:
+            if attempt < max_retries:
+                log(f"[API] Retry {attempt+1}/{max_retries}: {type(e).__name__}")
+                await asyncio.sleep(1 * (attempt + 1))
+                continue
+            return f"⚠️ API failed after {max_retries+1} tries: {type(e).__name__}"
 
 
 async def extract_memories_bg(user_id, user_msg, bot_reply):
