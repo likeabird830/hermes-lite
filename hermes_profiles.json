@@ -77,12 +77,17 @@
     "known_name": null,
     "facts": [
       "上海明天多云转阴有阵雨，气温22-28°C，湿度高体感闷热",
-      "温哥华明天晴间多云，气温15-22°C，体感凉爽舒适"
+      "温哥华明天晴间多云，气温15-22°C，体感凉爽舒适",
+      "用户住在上海，关注温哥华天气，偏好凉爽舒适天气",
+      "用户运营Hermes Discord机器人（仓库likeabird830/hermes-lite），技术栈包括discord.py、aiohttp、DeepSeek API、Tavily Search，部署在Render免费Web Service",
+      "用户有电商费用计算器脚本/home/ccl83/ecommerce-calculator.py，已安装Canvas Design、Competitive Ads Extractor、Content Research Writer技能",
+      "用户偏好详细需求说明、预算报告和费用清单，希望AI将原始数据整理为结构化分类，要求PDF文字清晰无黑框",
+      "用户使用Comet浏览器，计划迁移书签到Chrome"
     ],
     "preferences": {},
     "first_seen": "2026-05-06T03:50:26.384134",
-    "message_count": 2,
-    "last_active": "2026-05-07T05:20:46.232104",
-    "notes": "用户询问上海与温哥华明天的天气对比，助手提供了详细数据并给出活动建议。"
+    "message_count": 3,
+    "last_active": "2026-05-07T05:21:55.784310",
+    "notes": "用户询问上海与温哥华明天的天气对比，助手提供了详细数据并给出活动建议。\n用户是上海的技术爱好者，运营Hermes Discord机器人，偏好凉爽天气和结构化数据处理，使用Comet浏览器。"
   }
 }
