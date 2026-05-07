@@ -85,7 +85,7 @@
       "用户使用Comet浏览器，计划迁移书签到Chrome",
       "用户已安装3个技能：Canvas Design、Competitive Ads Extractor、Content Research Writer",
       "用户可能在使用支持技能安装的系统（如Claude Code）",
-      "用户询问技能数量和自进化能力，回复提到当前有100+个精选skills（编号#1到#104），涵盖创意设计、数据研究、AI工具、新媒体运营、代码开发等多个领域，且列表动态增长。",
+      "用户询问技能数量和自进化能力，回复提到当前有120+个精选skills（编号#1到#121），涵盖创意设计、数据研究、AI工具、新媒体运营、代码开发、搜索研究、电商Shopify等多个领域，且列表动态增长。",
       "自进化能力有两个核心机制：Self-Evolution (Evolver) v1.51.3，基于GEP协议，自动扫描日志、识别错误模式、选择进化基因、生成改进prompt并审计追踪；Darwin Skill，使用8维评分系统和hill-climbing算法优化，每次优化有git版本控制（棘轮机制）。",
       "触发词：自我进化、self-evolve、自动优化（针对Evolver）；优化skill、达尔文、skill评分（针对Darwin Skill）。",
       "回复表明系统能从错误中学习并自动改进能力，类似于后台的进化工程师。"
