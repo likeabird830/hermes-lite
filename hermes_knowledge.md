@@ -1,6 +1,6 @@
 # Hermes Knowledge Base
 
-> Auto-updated by Hermes | 2026-05-07T05:23:08.613103
+> Auto-updated by Hermes | 2026-05-07T05:23:10.648051
 
 - 43岁女性，加拿大公民+税务居民，美国F1签证，Burnaby本那比居住
 - 保险助理（月入~3300CAD），老板Aileen（温哥华经纪）
@@ -52,6 +52,4 @@
 - 电商费用计算器脚本路径：/home/ccl83/ecommerce-calculator.py
 - 已安装技能：Canvas Design, Competitive Ads Extractor, Content Research Writer
 - 上海和温哥华明天天气对比：上海有雨闷热，温哥华晴好凉爽
-- AI核心功能包括对话、记忆、联网搜索、文件处理
-- 用户可通过!learn或直接告知来教AI新技能
-- AI可以按规则开发新技能如电商费用分析、天气对比报告
+- Hermes AI具备对话、搜索、记忆和推理能力，但没有自带技能概念
