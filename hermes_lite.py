@@ -157,7 +157,15 @@ async def gh_download_memory():
 
 
 async def gh_upload_memory():
-    """Upload current memory to GitHub. Non-critical — failures are silent."""
+    """Upload current memory to GitHub. Non-critical — failures are silent.
+    
+    v2.3 IMPORTANT CHANGE:
+      - Profiles: always uploaded (user facts, names, etc.)
+      - Knowledge base: SKIPPED! Knowledge is maintained manually with 
+        proper Markdown formatting (# headings, numbered lists, categories).
+        Auto-uploading would destroy our carefully crafted skill index.
+        Use `!save` for manual full-save if really needed.
+    """
     global _dirty
     
     if not _dirty or not _gh_available:
@@ -165,22 +173,12 @@ async def gh_upload_memory():
     
     with _save_lock:
         try:
-            # Build knowledge markdown content
-            kb_lines = ["# Hermes Knowledge Base\n", f"> Auto-updated by Hermes | {datetime.datetime.now().isoformat()}\n"]
-            for entry in _knowledge:
-                kb_lines.append(f"- {entry}")
-            kb_md = "\n".join(kb_lines)
-            
-            # Get SHAs for update (or None if new file)
-            prof_result = await _gh_api("GET", f"/repos/{GH_OWNER}/{GH_REPO}/contents/{MEMORY_FILES['profiles']}?ref={GH_BRANCH}")
-            prof_sha = prof_result.get("sha") if prof_result else None
-            
-            kb_result = await _gh_api("GET", f"/repos/{GH_OWNER}/{GH_REPO}/contents/{MEMORY_FILES['knowledge']}?ref={GH_BRANCH}")
-            kb_sha = kb_result.get("sha") if kb_result else None
-            
-            # Upload both files
             import time
             ts = int(time.time())
+            
+            # === Upload PROFILES only ===
+            prof_result = await _gh_api("GET", f"/repos/{GH_OWNER}/{GH_REPO}/contents/{MEMORY_FILES['profiles']}?ref={GH_BRANCH}")
+            prof_sha = prof_result.get("sha") if prof_result else None
             
             prof_payload = json.dumps({
                 "message": f"[Hermes] 💾 Save profiles ({len(_profiles)} users) [auto-{ts}]",
@@ -189,22 +187,11 @@ async def gh_upload_memory():
                 **({"sha": prof_sha} if prof_sha else {})
             })
             
-            kb_payload = json.dumps({
-                "message": f"[Hermes] 📚 Save knowledge ({len(_knowledge)} entries) [auto-{ts}]",
-                "content": base64.b64encode(kb_md.encode()).decode(),
-                "branch": GH_BRANCH,
-                **({"sha": kb_sha} if kb_sha else {})
-            })
-            
             r1 = await _gh_api("PUT", f"/repos/{GH_OWNER}/{GH_REPO}/contents/{MEMORY_FILES['profiles']}", data=prof_payload.encode())
-            r2 = await _gh_api("PUT", f"/repos/{GH_OWNER}/{GH_REPO}/contents/{MEMORY_FILES['knowledge']}", data=kb_payload.encode())
             
-            if r1 and r2:
+            if r1:
                 _dirty = False
-                log(f"[☁️] Memory saved to GitHub ✅ ({len(_profiles)} users, {len(_knowledge)} kb)")
-            elif r1:
-                _dirty = False
-                log("[☁️] Profiles saved, knowledge failed (partial)")
+                log(f"[☁️] Memory saved to GitHub ✅ ({len(_profiles)} users, kb=manual)")
             else:
                 log("[☁️] GitHub save FAILED (will retry later)")
                 
