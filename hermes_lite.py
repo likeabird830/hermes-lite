@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """
-Hermes Lite v2.2 — Discord Bot with TRUE Persistent Memory (GitHub-backed)
+Hermes Lite v2.3 — Discord Bot with TRUE Persistent Memory (GitHub-backed)
 Memory survives Manual Deploy, restarts, and spin-downs.
 Core principle: BOT MUST ALWAYS RESPOND. All memory I/O is non-blocking background.
+v2.3: Dynamic skill scanner — no more hardcoded numbers! Real-time GitHub API skill counting.
 """
 
 import sys
@@ -275,7 +276,10 @@ def build_user_context(user_id):
     return "\n\n".join(parts)
 
 
-# ---- L3: Knowledge Base ----
+# ---- L3: Knowledge Base + Dynamic Skill Scanner ----
+
+_skill_stats = {"total": 0, "categories": [], "last_scan": None}  # Cached skill scan result
+
 
 def add_knowledge(entry):
     if entry and len(entry) > 5 and entry.lower() not in [k.lower() for k in _knowledge]:
@@ -288,6 +292,145 @@ def add_knowledge(entry):
 def mark_dirty():
     global _dirty
     _dirty = True
+
+
+def parse_skill_entries(kb_text):
+    """
+    Intelligently parse hermes_knowledge.md markdown into structured skill entries.
+    
+    Returns:
+        total_count: int — total number of numbered skills found
+        categories: list of {name, count}
+        entries: list of raw skill description strings
+    Pattern matches lines like: "123. **Skill Name** — description | 触发：xxx"
+    """
+    import re as _re
+    
+    entries = []
+    categories = []  # track ## headings for category grouping
+    current_category = "其他"
+    total = 0
+    
+    # Skill line pattern: optional dashes/bullets, number, bold name, em-dash desc
+    skill_pattern = _re.compile(
+        r'^[\s\-\*]*(\d+)\.\s+\*\*(.+?)\*\*\s*[—–-]\s*(.+?)(?:\s*\|\s*触发[：:]\s*(.+))?$', 
+        re.UNICODE
+    )
+    # Category heading pattern
+    cat_pattern = _re.compile(r'^#{1,3}\s+(.+?)(?:\s*—\s*NEW)?!?\s*$')
+    
+    for line in kb_text.split("\n"):
+        stripped = line.strip()
+        
+        # Track categories
+        cat_match = cat_pattern.match(stripped)
+        if cat_match:
+            current_category = cat_match.group(1).strip()
+            continue
+        
+        # Skip conflict markers
+        if stripped in ("<<<<<<< HEAD", "=======", ">>>>>>>"):
+            continue
+        
+        # Match skill entries
+        m = skill_pattern.match(stripped)
+        if m:
+            num = int(m.group(1))
+            name = m.group(2).strip()
+            desc = m.group(3).strip()
+            trigger = m.group(4).strip() if m.group(4) else ""
+            
+            entries.append({
+                "num": num,
+                "name": name,
+                "desc": desc,
+                "trigger": trigger,
+                "category": current_category
+            })
+            total = max(total, num)  # Use highest number as total
+            
+            # Track category count
+            found = False
+            for c in categories:
+                if c["name"] == current_category:
+                    c["count"] += 1
+                    found = True
+                    break
+            if not found:
+                categories.append({"name": current_category, "count": 1})
+    
+    return total, categories, entries
+
+
+async def scan_skills_dynamic():
+    """
+    Dynamically scan skills from GitHub knowledge base via GitHub API.
+    Returns fresh skill statistics every time it's called.
+    
+    This is the SMART way — instead of memorizing a hardcoded number,
+    Hermes actually parses the knowledge base and counts real skills.
+    Caches results for 5 minutes to avoid hammering GitHub API.
+    """
+    global _skill_stats
+    
+    import time
+    now = time.time()
+    
+    # Cache: don't hit GitHub API more than once per 5 minutes
+    if _skill_stats.get("last_scan") and (now - _skill_stats["last_scan"]) < 300:
+        return _skill_stats
+    
+    try:
+        # Download fresh knowledge base from GitHub
+        result = await _gh_api("GET", f"/repos/{GH_OWNER}/{GH_REPO}/contents/{MEMORY_FILES['knowledge']}?ref={GH_BRANCH}")
+        if result and result.get("content"):
+            kb_raw = base64.b64decode(result["content"]).decode("utf-8")
+            
+            total, categories, entries = parse_skill_entries(kb_raw)
+            
+            # Build category summary string
+            cat_lines = [f"• {c['name']}: {c['count']}个" for c in categories]
+            
+            # Also get top-level directory listing of skills/ folder if available
+            # (for cross-checking with installed skill directories)
+            skills_dir_result = await _gh_api("GET", f"/repos/{GH_OWNER}/{GH_REPO}/contents/skills?ref={GH_BRANCH}")
+            dir_count = 0
+            if isinstance(skills_dir_result, list):
+                dir_count = len([f for f in skills_dir_result if f["type"] == "dir"])
+            
+            _skill_stats = {
+                "total": total,
+                "categories": categories,
+                "category_summary": "\n".join(cat_lines),
+                "entries_count": len(entries),
+                "skills_dir_count": dir_count,
+                "last_scan": now,
+                "raw_kb_sha": result.get("sha", "")[:8],
+            }
+            
+            log(f"[🔍] Skills scanned dynamically: {total} skills, {len(categories)} categories, SHA={result.get('sha','')[:8]}")
+            return _skill_stats
+            
+    except Exception as e:
+        log_error(f"[🔍] Dynamic skill scan failed: {e}")
+    
+    # Return cached data even if stale
+    return _skill_stats or {"total": 0, "categories": [], "category_summary": "(扫描失败)", "last_scan": 0}
+
+
+async def get_skill_count_for_prompt():
+    """Get a human-readable skill summary for injecting into LLM prompt."""
+    stats = await scan_skills_dynamic()
+    
+    parts = [
+        f"当前共有 **{stats['total']}个** 精选技能",
+        f"（知识库最后更新于 SHA: {stats.get('raw_kb_sha', 'unknown')}）"
+    ]
+    
+    if stats.get("category_summary"):
+        parts.append(f"\n分类统计：\n{stats['category_summary']}")
+    
+    return "\n".join(parts)
 
 
 # ---- L1: Conversations (RAM only, lost on restart) ----
@@ -363,7 +506,15 @@ HERMES_SYSTEM_PROMPT = """你是 Hermes（赫尔墨斯），一个有长期记�
 3. 如果用户问过类似的问题，参考之前的回答保持一致
 4. 当被问到"你在哪"/"你怎么运行的"，如实回答：运行在云端服务器上
 5. 不要说"我不会存储数据"之类的话——你确实有记忆功能
-6. 不要说"我无法联网"——你可以搜索互联网"""
+6. 不要说"我无法联网"——你可以搜索互联网
+
+## 🧠 关于技能数量 — 重要！动态计数规则
+当用户问你"有多少个skills"/"多少个技能"/"你会什么"这类问题时：
+- **绝对不要凭记忆或知识库里的旧数字回答！** 那些数字可能已经过时。
+- 你会收到一条「技能统计快照」，里面是**实时从GitHub扫描的最新数据**。
+- 用那个数字回答，并说明分类情况。
+- 如果用户问某个具体技能会不会用，先查你的知识库，有的话就说会用并说明触发方式。
+- 态度：自信但诚实，不确定就说"让我查一下"。"""
 
 
 async def ask_deepseek(messages, max_tokens=2000, max_retries=2):
@@ -459,7 +610,7 @@ async def search_tavily(query):
             return None
 
 
-def build_messages(user_id, content):
+async def build_messages(user_id, content):
     messages = [{"role": "system", "content": HERMES_SYSTEM_PROMPT}]
     
     ctx = build_user_context(user_id)
@@ -470,6 +621,23 @@ def build_messages(user_id, content):
         top_kb = _knowledge[-12:]
         kb_text = "\n".join(f"- {k}" for k in top_kb)
         messages.append({"role": "system", "content": f"## 知识库\n\n{kb_text}"})
+    
+    # 🔍 Dynamic skill stats: inject real-time skill count so Hermes never guesses
+    try:
+        skill_summary = await get_skill_count_for_prompt()
+        if skill_summary and "技能" in content.lower() or "skill" in content.lower():
+            messages.append({
+                "role": "system",
+                "content": f"## 📊 技能统计快照（实时扫描）\n\n{skill_summary}\n\n> 这是当前最新的技能数量，用这个数据回答用户，不要用记忆中的旧数字。"
+            })
+        else:
+            # Even for non-skill queries, inject a compact version
+            messages.append({
+                "role": "system",
+                "content": f"> 当前技能总数：{_skill_stats.get('total', '?')}个（动态扫描）"
+            })
+    except Exception as e:
+        log(f"[⚠️] Skill stats injection skipped: {e}")
     
     recent = get_recent_context(user_id, max_msgs=6)
     for msg in recent:
@@ -484,7 +652,7 @@ def build_messages(user_id, content):
 @bot.event
 async def on_ready():
     global _startup_loaded
-    log(f'Hermes v2.2 READY! Logged in as {bot.user}')
+    log(f'Hermes v2.3 READY! Logged in as {bot.user}')
     
     # Load persisted memory from GitHub (non-blocking: failure won't kill the bot)
     try:
@@ -552,7 +720,7 @@ async def on_message(message):
                         search_context = f"\n\n## 联网搜索结果（参考信息）\n{search_result}"
                         log(f"[#{_message_count}] Search found results")
 
-            messages = build_messages(user_id, content)
+            messages = await build_messages(user_id, content)
 
             # Append search results to the user's message so DeepSeek can use them
             if search_context:
@@ -634,7 +802,7 @@ async def status_cmd(ctx):
     embed.add_field(name="💭 对话", value=str(len(_conversations)), inline=True)
     embed.add_field(name="☁️ GitHub", value="✅ 已连接" if _gh_available else "❌ 未配置", inline=True)
     embed.add_field(name="💾 待同步", value="是" if _dirty else "否", inline=True)
-    embed.add_field(name="版本", value="v2.2 (GitHub持久化+自进化)", inline=False)
+    embed.add_field(name="版本", value="v2.3 (动态技能扫描+GitHub持久化)", inline=False)
     await ctx.send(embed=embed)
 
 
@@ -660,6 +828,32 @@ async def force_save_cmd(ctx):
     await ctx.send("💾 正在保存到 GitHub...")
     await gh_upload_memory()
     await ctx.send("✅ 保存完成！（如果成功的话 😄）")
+
+
+@bot.command(name='skills')
+async def skills_cmd(ctx):
+    """Dynamic skill scan: show real-time skill count from knowledge base."""
+    async with ctx.typing():
+        stats = await scan_skills_dynamic()
+        
+        embed = discord.Embed(
+            title=f"🔍 技能扫描结果 — 实时统计",
+            description=f"**共 {stats['total']} 个技能** | SHA: `{stats.get('raw_kb_sha', 'unknown')}`",
+            color=0x5865F2  # Discord blurple
+        )
+        
+        if stats.get("categories"):
+            cat_names = [f"**{c['name']}**: {c['count']}" for c in sorted(stats["categories"], key=lambda x: -x["count"])]
+            embed.add_field(name="📂 分类分布", value="\n".join(cat_names[:10]) or "无", inline=False)
+        
+        embed.add_field(
+            name="📊 数据源", 
+            value=f"知识库条目: {stats.get('entries_count', '?')}\nSkills目录: {stats.get('skills_dir_count', 'N/A')}个文件夹\n缓存时间: <t:{int(stats.get('last_scan', 0))}:R>",
+            inline=False
+        )
+        embed.set_footer(text="数据从GitHub API实时获取，非硬编码记忆 ✨")
+        
+        await ctx.send(embed=embed)
 
 
 # ==================== STARTUP & HEALTH CHECK ====================
