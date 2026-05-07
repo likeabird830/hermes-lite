@@ -1,8 +1,7 @@
 # Hermes Knowledge Base
 
-> Auto-updated by Hermes | 2026-05-07T15:55:53.198598
+> Auto-updated by Hermes | 2026-05-07T15:56:55.332073
 
-- 10. **Prompt Master** — 图片+视频双模态提示词专家(20+平台) | 触发：文生图/视频
 - 11. **Prompt Bozo** — AI绘画/视频模块化提示词构建 | 触发：人物/场景/运镜
 - 12. **Prompt Generator** — 本地MJ/SD提示词模板 | 触发：Midjourney出图
 - 13. **Prompt Enhancer** — p:前缀自动优化提示词 | 触发：消息前缀"p:"
@@ -102,3 +101,4 @@
 - hill-climbing算法用于持续优化，棘轮机制确保不会倒退。
 - 技能列表动态增长，用户可安装新技能。
 - 技能库是活的，可随时扩充
+- 技能数量和质量可以动态提升。
