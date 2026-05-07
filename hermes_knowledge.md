@@ -1,6 +1,6 @@
 # Hermes Knowledge Base
 
-> Auto-updated by Hermes | 2026-05-07T05:21:05.260294
+> Auto-updated by Hermes | 2026-05-07T05:22:06.881149
 
 - 43岁女性，加拿大公民+税务居民，美国F1签证，Burnaby本那比居住
 - 保险助理（月入~3300CAD），老板Aileen（温哥华经纪）
