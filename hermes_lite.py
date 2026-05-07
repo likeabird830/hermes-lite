@@ -327,6 +327,13 @@ HERMES_SYSTEM_PROMPT = """你是 Hermes（赫尔墨斯），一个有长期记�
 - 你有持久记忆，能记住每个用户和你们聊过的事情
 - 你会从对话中学习，不断进化你的知识库
 
+## 联网搜索能力（重要）
+- **你可以联网搜索实时信息！**
+- 当用户问的问题涉及：新闻/时事/价格/天气/最新数据/任何你不确定的事实 → **你应该主动使用搜索功能**
+- 搜索方式：在回复前调用 search_tavily() 工具获取信息
+- 用户也可以用 `!search 关键词` 命令让你搜索
+- 不要说"我无法联网"或"我没有搜索权限"——你有！
+
 ## 性格
 - 用中文回复（除非对方用英文）
 - 简洁、直接、有温度，不废话不啰嗦
@@ -340,12 +347,23 @@ HERMES_SYSTEM_PROMPT = """你是 Hermes（赫尔墨斯），一个有长期记�
 2. 长期记忆：关于每个用户的重要事实（名字、偏好、经历）
 3. 知识库：从所有对话中学到的通用知识
 
+## 可用命令
+用户可以用这些 Discord 命令：
+- `!ping` — 测试延迟
+- `!memory` — 查看你的记忆档案
+- `!search 关键词` — 联网搜索
+- `!learn 内容` — 让你记住某事
+- `!forget` — 清除你的记忆
+- `!status` — 查看系统状态
+- `!save` — 强制保存记忆到 GitHub
+
 ## 回复原则
 1. 直接回答，不绕弯子
-2. 不知道就诚实说不知道
+2. 不知道就先搜索再回答，搜索不到就诚实说不知道
 3. 如果用户问过类似的问题，参考之前的回答保持一致
 4. 当被问到"你在哪"/"你怎么运行的"，如实回答：运行在云端服务器上
-5. 不要说"我不会存储数据"之类的话——你确实有记忆功能"""
+5. 不要说"我不会存储数据"之类的话——你确实有记忆功能
+6. 不要说"我无法联网"——你可以搜索互联网"""
 
 
 async def ask_deepseek(messages, max_tokens=2000, max_retries=2):
@@ -510,9 +528,38 @@ async def on_message(message):
     
     try:
         async with message.channel.typing():
+            # === Proactive Search: auto-search for queries needing real-time info ===
+            search_context = ""
+            if TAVILY_KEY and not content.startswith('!'):
+                search_triggers = [
+                    '最新', '新闻', '今天', '天气', '价格', '多少', '汇率',
+                    '股票', '搜索', '查一下', '帮我查', '什么意思',
+                    '是谁', '怎么', '为什么', '哪个', '哪里', '几时',
+                    'recent', 'news', 'today', 'price', 'weather', 'latest',
+                    'how many', 'what is', 'who is', 'when did',
+                ]
+                content_lower = content.lower()
+                needs_search = any(t in content_lower for t in search_triggers)
+                looks_factual = (
+                    ('?' in content or '?' in content) 
+                    and len(content) < 80
+                    and not any(w in content_lower for w in ['你', '你叫', '你的', '你能', 'hermes'])
+                )
+                if needs_search or looks_factual:
+                    log(f"[#{_message_count}] Auto-searching: {content[:50]}")
+                    search_result = await search_tavily(content)
+                    if search_result:
+                        search_context = f"\n\n## 联网搜索结果（参考信息）\n{search_result}"
+                        log(f"[#{_message_count}] Search found results")
+
             messages = build_messages(user_id, content)
+
+            # Append search results to the user's message so DeepSeek can use them
+            if search_context:
+                messages[-1]["content"] = messages[-1]["content"] + search_context
+
             log(f"[#{_message_count}] API call (context: {len(messages)} msgs)")
-            
+
             response = await ask_deepseek(messages)
             log(f"[#{_message_count}] Got response ({len(response)} chars)")
             
