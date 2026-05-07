@@ -188,3 +188,32 @@
 > - `node index.js --review` — 审查模式（人工确认每步）
 > - `node index.js --loop` — 后台守护持续进化
 > - 策略可选：balanced(默认) / innovate / harden / repair-only
+
+## 🔍 研究与搜索（5个）— NEW! from hermes-agent
+
+105. **DuckDuckGo Search** ⭐ — 免费网页搜索（文本/新闻/图片/视频），无需API Key | 触发：搜索、ddg、web search
+106. **ArXiv** — 学术论文搜索(arXiv API) + Semantic Scholar引用分析 | 触发：论文、arxiv、学术研究
+107. **Domain Intelligence** — 被动域名侦察(子域/SSL/WHOIS/DNS)，零依赖纯Python | 触发：域名查询、domain intel、whois
+108. **LLM Wiki** — Karpathy风格知识库（互链Markdown，RAG替代方案） | 触发：wiki、知识库、笔记系统
+109. **Polymarket** — 预测市场数据（概率/价格/订单簿），只读免费API | 触发：预测市场、polymarket、赔率
+
+## ✍️ 创意与写作（4个）— NEW!
+
+110. **Humanizer** ⭐ — 去AI味写作（29种AI模式检测+消除），让文本更自然 | 触发：humanize、去AI味、自然化写作
+111. **Meme Generation** — 生成真实meme图片（100+模板，Pillow渲染） | 触发：meme、表情包、梗图
+112. **Excalidraw** — 手绘风格图表JSON（架构图/流程图/序列图），可上传分享 | 触发：excalidraw、图表、绘图
+113. **Songwriting & AI Music** — 歌曲创作+Suno AI音乐提示词 | 触发：写歌、歌词、歌曲创作
+
+## 🛠️ 生产力与媒体（6个）— NEW!
+
+114. **OCR & Documents** — PDF/扫描件文本提取(pymupdf轻量/marker-pdf深度OCR) | 触发：PDF提取、OCR、文档处理
+115. **YouTube Content** — YouTube字幕提取→摘要/博客/线程格式 | 触发：YouTube总结、视频字幕
+116. **GIF Search** — Tenor API GIF搜索下载（Discord原生体验） | 触发：gif、表情包搜索、GIF
+117. **Nano PDF** — 极简PDF处理（pymupdf封装） | 触发：pdf读取、轻量PDF
+118. **Shopify** ⭐ — Shopify GraphQL API（产品/订单/库存/元字段）— 电商独立站核心技能！ | 触发：shopify、电商、产品管理
+
+## 📝 笔记与原型（3个）— NEW!
+
+119. **Obsidian** — Obsidian vault读写（搜索/创建/链接/wikilink） | 触发：obsidian、笔记、知识库
+120. **Sketch** — HTML一次性原型设计（2-3变体对比） | 触发：sketch、原型、mockup
+121. **1-3-1 Rule** — 结构化决策框架（1问题→3选项→1建议） | 触发：1-3-1、决策对比、方案选择
