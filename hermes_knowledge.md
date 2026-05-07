@@ -176,3 +176,15 @@
 99. **Clipcat** — TikTok电商视频创作 | 触发：TikTok视频
 100. **OpenClaw Master Skills** — 560+精选skill索引 | 触发：发现新skill
 101. **HV Analysis** — 横纵分析法 | 见数据研究类
+
+## 🧬 自我进化（3个）— NEW!
+
+102. **Self-Evolution (Evolver)** ⭐ — GEP协议自进化引擎(v1.51.3)，扫描运行日志识别错误模式→选择进化基因→生成改进prompt→审计追踪 | 触发：自我进化、self-evolve、自动优化、能力提升
+103. **Darwin Skill** — Skill优化器(8维评分+hill-climbing+git棘轮) | 触发：优化skill、达尔文、skill评分
+104. **PhoenixClaw** — 用户画像演化(append-only更新+trait检测+置信度) | 触发：日记、profile演化
+
+> 💡 **Self-Evolution 使用方式（Hermes可调用）：**
+> - `node index.js` — 单次进化循环（扫描日志→生成GEP prompt）
+> - `node index.js --review` — 审查模式（人工确认每步）
+> - `node index.js --loop` — 后台守护持续进化
+> - 策略可选：balanced(默认) / innovate / harden / repair-only
