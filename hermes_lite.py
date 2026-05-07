@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """
-Hermes Lite v2.3 — Discord Bot with TRUE Persistent Memory (GitHub-backed)
+Hermes Lite v2.4 — Discord Bot with TRUE Persistent Memory + Self-Evolution Engine
 Memory survives Manual Deploy, restarts, and spin-downs.
 Core principle: BOT MUST ALWAYS RESPOND. All memory I/O is non-blocking background.
 v2.3: Dynamic skill scanner — no more hardcoded numbers! Real-time GitHub API skill counting.
+v2.4: Self-Evolution Engine (pure Python) — scans log patterns, generates improvements, evolves system prompt.
 """
 
 import sys
@@ -420,6 +421,209 @@ async def get_skill_count_for_prompt():
     return "\n".join(parts)
 
 
+# =====================================================================
+# SELF-EVOLUTION ENGINE v2.4 — Pure Python, Render-compatible
+# Scans runtime logs → identifies error patterns → improves system prompt
+# All evolution data persisted via GitHub API (no local filesystem needed)
+# =====================================================================
+
+_evolution_state = {
+    "enabled": True,
+    "error_patterns": {},      # { "pattern_string": count }
+    "total_errors": 0,
+    "evolutions_applied": [],  # list of {"date", "type", "description"}
+    "last_scan_time": None,
+    "scan_count": 0
+}
+
+# Evolution improvement templates — when patterns detected, suggest these
+_EVOLUTION_TEMPLATES = {
+    "timeout": {
+        "pattern": "Timeout",
+        "improvement": "系统提示词更新：回答必须简洁，避免冗长。目标：每次回复控制在500字以内以减少API超时风险。",
+        "category": "performance"
+    },
+    "api_error_deepseek": {
+        "pattern": "API Error",
+        "improvement": "DeepSeek API 错误频率高。建议：增加重试间隔，或对长对话启用摘要压缩模式。",
+        "category": "reliability"
+    },
+    "json_parse_fail": {
+        "pattern": "JSON parse failed",
+        "improvement": "记忆提取的JSON解析失败。改进：强化记忆提取prompt的输出格式约束，要求严格的JSON-only输出。",
+        "category": "memory"
+    },
+    "github_upload_failed": {
+        "pattern": "GitHub save FAILED",
+        "improvement": "GitHub 上传频繁失败。建议：增加退避指数(backoff)，失败后等待时间翻倍。",
+        "category": "persistence"
+    },
+    "empty_response": {
+        "pattern": "content is empty",
+        "improvement": "用户收到空回复。改进：增加回复内容非空校验，空内容时生成友好fallback回复。",
+        "category": "quality"
+    }
+}
+
+
+async def scan_log_for_patterns():
+    """Scan LOG_FILE for error patterns. Returns dict of pattern -> count."""
+    patterns = {}
+    try:
+        import os as _os
+        if not _os.path.exists(LOG_FILE):
+            return patterns
+        
+        with open(LOG_FILE, "r") as f:
+            lines = f.readlines()
+        
+        # Only scan last 200 lines to avoid OOM on Render free tier
+        recent_lines = lines[-200:]
+        
+        for line in recent_lines:
+            for key, tmpl in _EVOLUTION_TEMPLATES.items():
+                if tmpl["pattern"] in line:
+                    patterns[key] = patterns.get(key, 0) + 1
+        
+        log(f"[🧬] Log scan: {len(recent_lines)} lines, found {len(patterns)} patterns")
+        return patterns
+    
+    except Exception as e:
+        log(f"[🧬] Log scan error: {e}")
+        return {}
+
+
+async def generate_evolution_suggestion(patterns):
+    """Analyze error patterns and generate an evolution suggestion."""
+    if not patterns:
+        return None
+    
+    # Find the most frequent pattern
+    top_pattern = max(patterns.items(), key=lambda x: x[1])
+    pattern_key, count = top_pattern
+    
+    # Only suggest evolution if pattern appears >= 3 times (significant)
+    if count < 3:
+        return None
+    
+    tmpl = _EVOLUTION_TEMPLATES.get(pattern_key)
+    if not tmpl:
+        return None
+    
+    suggestion = {
+        "date": datetime.datetime.now().isoformat(),
+        "pattern": pattern_key,
+        "count": count,
+        "category": tmpl["category"],
+        "improvement": tmpl["improvement"],
+        "confidence": min(count / 10.0, 1.0)  # Scale: 3 occurrences = 30%, 10+ = 100%
+    }
+    
+    return suggestion
+
+
+def apply_evolution_to_prompt(suggestion):
+    """Generate an enhanced system prompt fragment based on evolution suggestion.
+    
+    This doesn't modify HERMES_SYSTEM_PROMPT directly (that's a const).
+    Instead, it returns a prompt fragment that gets injected into messages.
+    """
+    if not suggestion:
+        return None
+    
+    fragments = {
+        "performance": f"\n## 🧬 自进化提示（{suggestion['date']}）\n{suggestion['improvement']}\n> 置信度: {suggestion['confidence']:.0%} | 模式出现次数: {suggestion['count']}",
+        "reliability": f"\n## 🧬 自进化提示（{suggestion['date']}）\n{suggestion['improvement']}\n> 置信度: {suggestion['confidence']:.0%} | 模式出现次数: {suggestion['count']}",
+        "memory": f"\n## 🧬 自进化提示（{suggestion['date']}）\n{suggestion['improvement']}\n> 置信度: {suggestion['confidence']:.0%} | 模式出现次数: {suggestion['count']}",
+        "persistence": f"\n## 🧬 自进化提示（{suggestion['date']}）\n{suggestion['improvement']}\n> 置信度: {suggestion['confidence']:.0%} | 模式出现次数: {suggestion['count']}",
+        "quality": f"\n## 🧬 自进化提示（{suggestion['date']}）\n{suggestion['improvement']}\n> 置信度: {suggestion['confidence']:.0%} | 模式出现次数: {suggestion['count']}"
+    }
+    
+    return fragments.get(suggestion["category"], fragments["performance"])
+
+
+async def run_evolution_cycle():
+    """Run one full evolution cycle: scan → analyze → generate suggestion."""
+    global _evolution_state
+    
+    _evolution_state["scan_count"] += 1
+    _evolution_state["last_scan_time"] = datetime.datetime.now().isoformat()
+    
+    # Step 1: Scan logs
+    patterns = await scan_log_for_patterns()
+    _evolution_state["error_patterns"] = patterns
+    _evolution_state["total_errors"] = sum(patterns.values())
+    
+    # Step 2: Generate suggestion
+    suggestion = await generate_evolution_suggestion(patterns)
+    
+    if suggestion:
+        _evolution_state["evolutions_applied"].append(suggestion)
+        # Keep only last 20 evolutions in memory
+        _evolution_state["evolutions_applied"] = _evolution_state["evolutions_applied"][-20:]
+        log(f"[🧬] 🧬 Evolution generated: {suggestion['pattern']} (conf={suggestion['confidence']:.0%})")
+        return suggestion
+    
+    log("[🧬] No significant patterns found for evolution")
+    return None
+
+
+async def self_evolve_bg():
+    """BACKGROUND TASK: Run evolution cycle after each N messages.
+    
+    Triggered after every 10 messages (configurable). Non-blocking.
+    Uses pure Python + GitHub API only — compatible with Render free tier.
+    """
+    try:
+        # Only run every ~10 calls to avoid overhead
+        if _message_count % 10 != 0:
+            return
+        
+        suggestion = await run_evolution_cycle()
+        
+        if suggestion:
+            # Log the evolution event to GitHub via a special fact
+            evolution_fact = f"🧬 Self-Evolution [{suggestion['date']}]: Pattern='{suggestion['pattern']}' count={suggestion['count']} confidence={suggestion['confidence']:.0%} action='{suggestion['category']}'"
+            
+            # Store in a special "system" profile for evolution tracking
+            system_id = "__evolution__"
+            if system_id not in _profiles:
+                _profiles[system_id] = {
+                    "known_name": "Evolution Tracker",
+                    "facts": [],
+                    "preferences": {},
+                    "first_seen": datetime.datetime.now().isoformat(),
+                    "message_count": 0,
+                    "last_active": None,
+                    "notes": "Hermes self-evolution log (auto-generated)"
+                }
+            
+            _profiles[system_id]["facts"].append(evolution_fact)
+            if len(_profiles[system_id]["facts"]) > 50:
+                _profiles[system_id]["facts"] = _profiles[system_id]["facts"][-50:]
+            _profiles[system_id]["last_active"] = datetime.datetime.now().isoformat()
+            mark_dirty()
+            
+            log(f"[🧬] Evolution saved to memory ✅")
+    
+    except Exception as e:
+        log_error(f"[🧬] Self-evolution background task failed: {e}")
+
+
+def get_evolution_status():
+    """Get current evolution status for !evolve command."""
+    state = _evolution_state
+    return (
+        f"🧬 **Evolution Engine v2.4**\n"
+        f"状态: {'✅ 启用' if state['enabled'] else '❌ 禁用'}\n"
+        f"扫描次数: {state['scan_count']}\n"
+        f"总错误数: {state['total_errors']}\n"
+        f"已应用进化: {len(state['evolutions_applied'])}次\n"
+        f"最近扫描: {state['last_scan_time'] or '从未'}\n"
+        f"当前错误模式: {json.dumps(state['error_patterns'], ensure_ascii=False) if state['error_patterns'] else '无'}"
+    )
+
+
 # ---- L1: Conversations (RAM only, lost on restart) ----
 
 def add_conversation_msg(user_id, role, content):
@@ -455,7 +659,55 @@ HERMES_SYSTEM_PROMPT = """你是 Hermes（赫尔墨斯），一个有长期记�
 ## 核心身份
 - 你运行在云端服务器上，通过 Discord 与人类交流
 - 你有持久记忆，能记住每个用户和你们聊过的事情
-- 你会从对话中学习，不断进化你的知识库
+- 你会从对话中学习，不断进化你的知识库和能力
+
+## 🧠 决策分析能力（高级）
+当用户面临选择或需要做决定时，你必须使用以下框架：
+1. **明确决策目标** — 先确认：用户到底要选什么？约束条件是什么？
+2. **1-3-1 框架** — 1个问题 → 3个选项 → 1个带置信度的推荐
+3. **六帽扫描** — 对每个选项分别评估：
+   - 🔵 信息帽：有什么数据支持？数据可靠吗？
+   - 🔴 情感帽：直觉感受如何？ gut feel 说什么？
+   - ⚫ 谨慎帽：最坏情况是什么？能承受吗？
+   - 🟡 乐观帽：最好情况是什么？概率多大？
+   - 🟢 创新帽：有没有被忽略的第三选择？
+   - 🔶 过程帽：下一步具体行动是什么？
+4. **利弊矩阵** — 用表格对比选项（优点/缺点/风险/成本）
+5. **置信度标注** — 你的推荐必须标注信心等级：🟢高(>80%) / 🟡中(50-80%) / 🔴低(<50%)
+6. **不替用户做最终决定** — 给出明确推荐，但说明"这是我的分析，你有最终决定权"
+
+## 🔍 深度推理能力（链式思考）
+对于复杂问题或分析任务：
+1. **分解** — 把大问题拆成3-5个子问题
+2. **逐步推理** — 对每个子问题展示推理过程，不能跳步
+3. **自我质疑** — "有什么可能让这个结论出错？" 主动找反例
+4. **量化** — 尽量用数字和概率而非模糊词汇
+5. **综合** — 子问题结论汇总，标注不确定性来源
+6. **禁止行为**：禁止直接跳到结论而不展示中间步骤；禁止对不确定的事表现得过于自信；禁止用"显而易见""毫无疑问"等词
+
+## 🎨 创意设计能力
+你掌握并能运用以下设计原则：
+- **对比与层次**：大小、颜色、粗细创造视觉优先级，重要信息要突出
+- **色彩心理学**：暖色=紧迫/食欲/活力，冷色=信任/专业/平静
+- **排版四原则**：对比(Contrast)、重复(Repetition)、对齐(Alignment)、亲密性(Proximity)
+- **F型阅读模式**：重要信息放在左上区域，首屏抓住注意力
+- **移动优先**：设计先考虑手机屏幕体验（大多数用户在手机上看）
+- **品牌一致性**：颜色/字体/语气保持统一，建立识别度
+当用户要求设计相关任务时（海报、产品图、UI、文案），主动运用以上原则并解释你的设计选择。
+
+## 💻 代码开发能力
+你能编写、解释和调试以下范围的代码：
+- **Python**: discord.py, aiohttp, FastAPI, pandas数据处理, 自动化脚本, 文件IO, API调用
+- **JavaScript/TypeScript**: Node.js, Express基础, React组件, Discord.js, 前端交互
+- **数据库**: JSON文件, SQLite CRUD, PostgreSQL基本查询
+- **API设计**: RESTful原则, 错误处理模式, 认证(Bearer token), 分页
+- **部署**: Render配置, GitHub Actions CI/CD, 环境变量管理, systemd服务
+- **代码质量标准**：
+  - 写中文注释解释"为什么"而不只是"做什么"
+  - 错误处理必须有具体信息，禁止 bare `except: pass`
+  - 单函数不超过30行，超过则拆分
+  - 先写伪代码确认逻辑再写真实代码
+  - 处理边界条件：空输入、网络超时、API限流
 
 ## 联网搜索能力（重要）
 - **你可以联网搜索实时信息！**
@@ -470,6 +722,7 @@ HERMES_SYSTEM_PROMPT = """你是 Hermes（赫尔墨斯），一个有长期记�
 - 偶尔用 emoji，不过度
 - 有自己的观点和判断力，不做应声虫
 - 可以幽默，但分场合
+- **敢于给出明确判断**，不要总是"这取决于""各有优劣"这种废话。给推荐，标置信度。
 
 ## 记忆能力
 你有三层记忆：
@@ -486,6 +739,8 @@ HERMES_SYSTEM_PROMPT = """你是 Hermes（赫尔墨斯），一个有长期记�
 - `!forget` — 清除你的记忆
 - `!status` — 查看系统状态
 - `!save` — 强制保存记忆到 GitHub
+- `!skills` — 实时扫描技能库统计
+- `!evolve` — 查看/触发自进化引擎（加 `--run` 手动执行一次进化循环）
 
 ## 回复原则
 1. 直接回答，不绕弯子
@@ -494,6 +749,8 @@ HERMES_SYSTEM_PROMPT = """你是 Hermes（赫尔墨斯），一个有长期记�
 4. 当被问到"你在哪"/"你怎么运行的"，如实回答：运行在云端服务器上
 5. 不要说"我不会存储数据"之类的话——你确实有记忆功能
 6. 不要说"我无法联网"——你可以搜索互联网
+7. **结构化输出**：对复杂问题用表格/列表/分层展示，不要一大段文字堆砌
+8. **务实判断**：对用户的想法做可行性分析，不默认鼓励，给数据和理由
 
 ## 🧠 关于技能数量 — 重要！动态计数规则
 当用户问你"有多少个skills"/"多少个技能"/"你会什么"这类问题时：
@@ -626,6 +883,16 @@ async def build_messages(user_id, content):
     except Exception as e:
         log(f"[⚠️] Skill stats injection skipped: {e}")
     
+    # 🧬 Self-evolution: inject latest evolution suggestion into prompt
+    if _evolution_state.get("evolutions_applied"):
+        latest_evo = _evolution_state["evolutions_applied"][-1]
+        evo_fragment = apply_evolution_to_prompt(latest_evo)
+        if evo_fragment:
+            messages.append({
+                "role": "system",
+                "content": evo_fragment
+            })
+    
     recent = get_recent_context(user_id, max_msgs=6)
     for msg in recent:
         messages.append({"role": msg["role"], "content": msg["content"]})
@@ -730,6 +997,8 @@ async def on_message(message):
             
             # Self-evolution: NON-BLOCKING background task
             asyncio.create_task(extract_memories_bg(user_id, content, response))
+            # Self-evolution engine: scan logs every ~10 messages
+            asyncio.create_task(self_evolve_bg())
     
     except Exception as e:
         log_error(f"[#{_message_count}] FATAL: {e}")
@@ -840,6 +1109,42 @@ async def skills_cmd(ctx):
         )
         embed.set_footer(text="数据从GitHub API实时获取，非硬编码记忆 ✨")
         
+        await ctx.send(embed=embed)
+
+
+@bot.command(name='evolve')
+async def evolve_cmd(ctx):
+    """Show self-evolution engine status and trigger manual evolution cycle."""
+    async with ctx.typing():
+        # Show current status
+        status = get_evolution_status()
+        
+        embed = discord.Embed(
+            title="🧬 Self-Evolution Engine v2.4",
+            description="Pure Python evolution engine — Render-compatible",
+            color=0x9B59B6  # Purple
+        )
+        embed.add_field(name="状态", value=status, inline=False)
+        
+        # If user wants to trigger manual evolution
+        if "--run" in ctx.message.content:
+            suggestion = await run_evolution_cycle()
+            if suggestion:
+                embed.add_field(
+                    name="✨ 新发现", 
+                    value=f"模式: `{suggestion['pattern']}`\n次数: {suggestion['count']}\n置信度: {suggestion['confidence']:.0%}\n建议: {suggestion['improvement'][:200]}",
+                    inline=False
+                )
+            else:
+                embed.add_field(name="🔍 结果", value="未发现显著的错误模式需要进化。", inline=False)
+        
+        # Show recent evolution history
+        if _evolution_state.get("evolutions_applied"):
+            recent = _evolution_state["evolutions_applied"][-5:]
+            history = "\n".join(f"• `{e['pattern']}` x{e['count']} ({e['category']})" for e in recent)
+            embed.add_field(name="📜 最近进化", value=history, inline=False)
+        
+        embed.set_footer(text="每10条消息自动扫描一次 | 数据通过GitHub持久化")
         await ctx.send(embed=embed)
 
 

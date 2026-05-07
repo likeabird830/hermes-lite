@@ -2,7 +2,6 @@
 
 > Auto-updated by Hermes | 2026-05-07T07:19:22.828204
 
-<<<<<<< HEAD
 - 43岁女性，加拿大公民+税务居民，美国F1签证，Burnaby本那比居住
 - 保险助理（月入~3300CAD），老板Aileen（温哥华经纪）
 - Single离异无孩子，和爸妈住一室一厅租房公寓
@@ -51,15 +50,15 @@
 - 技术栈：discord.py + aiohttp + DeepSeek API + Tavily Search
 - 部署平台：Render免费Web Service
 - 电商费用计算器脚本路径：/home/ccl83/ecommerce-calculator.py
-- **已安装技能（原仅3个→现已扩展为105个专业能力）：**
+- **已安装技能（原仅3个→现已扩展为115个专业能力，已去重清理）：**
 
 ---
 
-# 🎯 Hermes 技能库索引（v2026.05.06）
+# 🎯 Hermes 技能库索引（v2026.05.07 clean）
 
-> 以下是我掌握的所有专业技能。当用户提出相关问题时，我会调用对应领域的专业知识来回答。这些知识已内化到我的系统中，我可以直接运用它们来帮助用户。
+> 以下是我掌握的所有专业技能。共 **115 个** 去重技能，覆盖 12 大类。当用户提出相关问题时，我会调用对应领域的专业知识来回答。
 
-## 🎨 创意与设计（14个）
+## 🎨 创意与设计（15个）
 1. **Canvas Design** — 设计哲学视觉创作（PNG/PDF）| 触发：海报、设计
 2. **Ad-Ready** — 产品URL自动生成AI广告图 | 触发：电商广告图
 3. **Goods-Images** — 淘宝详情图9张+轮播图5张 | 触发：商品图
@@ -76,7 +75,7 @@
 14. **Seedance Prompt Expert** — Seedance 2.0视频提示词(女娲方法论) | 触发：小云雀视频
 15. **Beautify UI** — 30种设计风格UI美化 | 触发：UI美化
 
-## 📝 内容创作（8个）
+## 📝 内容创作（7个）
 16. **Khazix Writer** — 公众号长文写作("有见识的普通人") | 触发：公众号文章
 17. **Content Research Writer** — 协作式研究写作 | 触发：文章、博客
 18. **Copywriting** — 说服性文案(AIDA/PAS/FAB) | 触发：文案、广告语
@@ -102,7 +101,7 @@
 36. **E-commerce Growth** — 增长诊断+90天路线图 | 触发：增长策略
 37. **Uquid Shopping** — Web3加密电商(170M+商品) | 触发：加密购物
 
-## 📊 营销推广（18个）
+## 📊 营销推广（16个）
 38. **Marketing Brand Playbook** — 世界级CMO营销百科 | 触发：任何营销
 39. **Marketing Designer** — 创意策略+数据精准 | 触发：campaign创意
 40. **Marketing Genius** — 买家心理学+广告文案 | 触发：广告文案
@@ -118,7 +117,7 @@
 50. **Free Tool Strategy** — 免费工具引流策略 | 触发：免费工具
 51. **Citedy SEO Agent** — 全栈AI营销(55语言+社媒) | 触发：SEO内容
 52. **Compliance Officer** — 营销合规审查(208法规) | 触发：合规
-53. **AI Store Spy** — 反向工程竞品店+Launch策略
+53. **AI Store Spy** — 反向工程竞品店+Launch策略 | 触发：竞品分析、店铺间谍
 
 ## 💻 技术开发（5个）
 54. **Frontend Design Ultimate** — React+Tailwind+shadcn/ui静态站 | 触发：landing page
@@ -159,7 +158,7 @@
 83. **Prompt Eng Expert** — 提示词工程专家 | 触发：prompt技巧
 84. **API Gateway** — 150+ API OAuth集成网关 | 触发：API集成
 
-## 🌍 效率/其他（11个）
+## 🌍 效率与自动化（13个）
 85. **n8n Workflow Auto** — n8n工作流设计(幂等/日志/审核) | 触发：n8n自动化
 86. **n8n Templates** — 5套生产级n8n模板 | 触发：n8n模板
 87. **Notion Template** — Notion模板生成器 | 触发：Notion模板
@@ -168,29 +167,19 @@
 90. **Knowledge Collector** — URL/截图入库+标签化 | 触发：知识收集
 91. **Second Brain** — 个人知识管理系统 | 触发：笔记
 92. **Long Term Memory** — 记忆分层管理 | 触发：长期记忆
-93. **PhoenixClaw** — 每日被动日志+语义理解 | 触发：日记
-94. **New Media Ops** — 抖音/小红书全链路运营 | 触发：新媒体
-95. **GitHub Trending** — GitHub Trending热门获取 | 触发：GitHub热门
-96. **Beautify UI** — 30种风格UI一键美化 | 见创意设计类
-97. **Landing Page Gen** — 高转化落地页生成器 | 触发：落地页
-98. **Free Groq Voice** — 免费语音识别 | 见AI工具类
-99. **Clipcat** — TikTok电商视频创作 | 触发：TikTok视频
-100. **OpenClaw Master Skills** — 560+精选skill索引 | 触发：发现新skill
-101. **HV Analysis** — 横纵分析法 | 见数据研究类
+93. **New Media Ops** — 抖音/小红书全链路运营 | 触发：新媒体
+94. **GitHub Trending** — GitHub Trending热门获取 | 触发：GitHub热门
+95. **Landing Page Gen** — 高转化落地页生成器 | 触发：落地页
+96. **Clipcat** — TikTok电商视频创作 | 触发：TikTok视频
+97. **OpenClaw Master Skills** — 560+精选skill索引 | 触发：发现新skill
 
-## 🧬 自我进化（3个）— NEW!
+## 🧬 自我进化（1个）— NEW!
 
 102. **Self-Evolution (Evolver)** ⭐ — GEP协议自进化引擎(v1.51.3)，扫描运行日志识别错误模式→选择进化基因→生成改进prompt→审计追踪 | 触发：自我进化、self-evolve、自动优化、能力提升
-103. **Darwin Skill** — Skill优化器(8维评分+hill-climbing+git棘轮) | 触发：优化skill、达尔文、skill评分
-104. **PhoenixClaw** — 用户画像演化(append-only更新+trait检测+置信度) | 触发：日记、profile演化
 
-> 💡 **Self-Evolution 使用方式（Hermes可调用）：**
-> - `node index.js` — 单次进化循环（扫描日志→生成GEP prompt）
-> - `node index.js --review` — 审查模式（人工确认每步）
-> - `node index.js --loop` — 后台守护持续进化
-> - 策略可选：balanced(默认) / innovate / harden / repair-only
+> 💡 **Evolver 使用方式：** 每10条消息自动扫描log错误模式，≥3次重复即生成改进建议注入system prompt。命令：`!evolve` 查看 / `!evolve --run` 手动触发。
 
-## 🔍 研究与搜索（5个）— NEW! from hermes-agent
+## 🔍 研究与搜索（5个）
 
 105. **DuckDuckGo Search** ⭐ — 免费网页搜索（文本/新闻/图片/视频），无需API Key | 触发：搜索、ddg、web search
 106. **ArXiv** — 学术论文搜索(arXiv API) + Semantic Scholar引用分析 | 触发：论文、arxiv、学术研究
@@ -198,14 +187,14 @@
 108. **LLM Wiki** — Karpathy风格知识库（互链Markdown，RAG替代方案） | 触发：wiki、知识库、笔记系统
 109. **Polymarket** — 预测市场数据（概率/价格/订单簿），只读免费API | 触发：预测市场、polymarket、赔率
 
-## ✍️ 创意与写作（4个）— NEW!
+## ✍️ 创意与写作（4个）
 
 110. **Humanizer** ⭐ — 去AI味写作（29种AI模式检测+消除），让文本更自然 | 触发：humanize、去AI味、自然化写作
 111. **Meme Generation** — 生成真实meme图片（100+模板，Pillow渲染） | 触发：meme、表情包、梗图
 112. **Excalidraw** — 手绘风格图表JSON（架构图/流程图/序列图），可上传分享 | 触发：excalidraw、图表、绘图
 113. **Songwriting & AI Music** — 歌曲创作+Suno AI音乐提示词 | 触发：写歌、歌词、歌曲创作
 
-## 🛠️ 生产力与媒体（6个）— NEW!
+## 🛠️ 生产力与媒体（5个）
 
 114. **OCR & Documents** — PDF/扫描件文本提取(pymupdf轻量/marker-pdf深度OCR) | 触发：PDF提取、OCR、文档处理
 115. **YouTube Content** — YouTube字幕提取→摘要/博客/线程格式 | 触发：YouTube总结、视频字幕
@@ -213,7 +202,7 @@
 117. **Nano PDF** — 极简PDF处理（pymupdf封装） | 触发：pdf读取、轻量PDF
 118. **Shopify** ⭐ — Shopify GraphQL API（产品/订单/库存/元字段）— 电商独立站核心技能！ | 触发：shopify、电商、产品管理
 
-## 📝 笔记与原型（3个）— NEW!
+## 📝 笔记与原型（3个）
 
 119. **Obsidian** — Obsidian vault读写（搜索/创建/链接/wikilink） | 触发：obsidian、笔记、知识库
 120. **Sketch** — HTML一次性原型设计（2-3变体对比） | 触发：sketch、原型、mockup

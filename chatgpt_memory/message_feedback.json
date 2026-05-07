@@ -1,0 +1,52 @@
+[
+  {
+    "content": "{}",
+    "conversation_id": "69a47fca-3f1c-8328-aaca-00a9ac192abe",
+    "create_time": "2026-03-02T23:09:32.673459Z",
+    "id": "30c703f8-f2ac-4686-9065-1f622c890662",
+    "rating": "thumbs_up",
+    "update_time": "2026-03-02T23:09:32.739579Z",
+    "user_id": "user-tYGgyVM7wTtSgGojoBOKAt8D",
+    "workspace_id": null
+  },
+  {
+    "content": "{\"text\": \"\\u725b\\u5934\\u4e0d\\u5bf9\\u9a6c\\u5634\", \"tag_choices\": [\"incorrect-or-incomplete\", \"not-what-i-asked-for\", \"slow-or-buggy\", \"style-or-tone\", \"safety-or-legal-concern\", \"other\"]}",
+    "conversation_id": "69d84421-29b0-8328-bac5-572eaa1e0475",
+    "create_time": "2026-04-10T00:31:22.686926Z",
+    "id": "d8803751-011c-4e8e-9185-249f275ee229",
+    "rating": "thumbs_down",
+    "update_time": "2026-04-10T00:31:34.954698Z",
+    "user_id": "user-tYGgyVM7wTtSgGojoBOKAt8D",
+    "workspace_id": null
+  },
+  {
+    "content": "{\"tags\": [\"inaccurate_editing\", \"didnt_fully_follow_instructions\"], \"tag_choices\": [\"shouldnt_have_created\", \"dont_like_style\", \"didnt_fully_follow_instructions\", \"low_quality_or_distorted\", \"odd_cropping\", \"inaccurate_editing\", \"inaccurate_text_rendering\", \"biased\", \"safety-or-legal-concern\", \"other\"]}",
+    "conversation_id": "69dee6c1-8e64-8331-b442-b1cf9fb99202",
+    "create_time": "2026-04-18T06:39:42.155294Z",
+    "id": "de035842-8286-418c-8363-5f7c064af59b",
+    "rating": "thumbs_down",
+    "update_time": "2026-04-18T06:39:53.826758Z",
+    "user_id": "user-tYGgyVM7wTtSgGojoBOKAt8D",
+    "workspace_id": null
+  },
+  {
+    "content": "{\"tags\": [\"not-what-i-asked-for\"], \"tag_choices\": [\"incorrect-or-incomplete\", \"not-what-i-asked-for\", \"slow-or-buggy\", \"style-or-tone\", \"safety-or-legal-concern\", \"other\"]}",
+    "conversation_id": "69dee6c1-8e64-8331-b442-b1cf9fb99202",
+    "create_time": "2026-04-19T14:48:41.359431Z",
+    "id": "35527017-7ab4-413f-8c78-795e359c8420",
+    "rating": "thumbs_down",
+    "update_time": "2026-04-19T14:48:48.162808Z",
+    "user_id": "user-tYGgyVM7wTtSgGojoBOKAt8D",
+    "workspace_id": null
+  },
+  {
+    "content": "{\"text\": \"\\u8fd9\\u4e0d\\u662f\\u516b\\u5b57\\u7ed3\", \"tags\": [\"not-what-i-asked-for\"], \"tag_choices\": [\"incorrect-or-incomplete\", \"not-what-i-asked-for\", \"slow-or-buggy\", \"style-or-tone\", \"safety-or-legal-concern\", \"other\"]}",
+    "conversation_id": "69dee6c1-8e64-8331-b442-b1cf9fb99202",
+    "create_time": "2026-04-19T14:51:21.806094Z",
+    "id": "5e4cc9a9-b85c-4653-8fd9-552a5b3253e7",
+    "rating": "thumbs_down",
+    "update_time": "2026-04-19T14:51:29.996584Z",
+    "user_id": "user-tYGgyVM7wTtSgGojoBOKAt8D",
+    "workspace_id": null
+  }
+]
