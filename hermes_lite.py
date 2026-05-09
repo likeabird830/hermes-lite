@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """
-Hermes Lite v2.4 — Discord Bot with TRUE Persistent Memory + Self-Evolution Engine
+Hermes Lite v2.5 — Discord Bot with TRUE Persistent Memory + Self-Evolution Engine + Gemini Vision
 Memory survives Manual Deploy, restarts, and spin-downs.
 Core principle: BOT MUST ALWAYS RESPOND. All memory I/O is non-blocking background.
 v2.3: Dynamic skill scanner — no more hardcoded numbers! Real-time GitHub API skill counting.
 v2.4: Self-Evolution Engine (pure Python) — scans log patterns, generates improvements, evolves system prompt.
+v2.5: Google Gemini Vision integration — can now SEE and analyze image attachments!
 """
 
 import sys
@@ -42,6 +43,7 @@ log(f"Python: {sys.version}")
 DISCORD_TOKEN = os.environ.get('DISCORD_BOT_TOKEN', '')
 DEEPSEEK_KEY = os.environ.get('DEEPSEEK_API_KEY', '')
 TAVILY_KEY = os.environ.get('TAVILY_API_KEY', '')
+GOOGLE_API_KEY = os.environ.get('GOOGLE_API_KEY', '')  # Google Gemini Vision for image analysis
 
 # GitHub persistence config
 GH_TOKEN = os.environ.get('GITHUB_TOKEN', '')       # Personal Access Token (repo scope)
@@ -645,6 +647,14 @@ def get_recent_context(user_id, max_msgs=10):
 async def startup_load():
     """Load all persistent memory from GitHub at bot start."""
     log("Loading memory from GitHub...")
+    
+    # Log what we're using for persistence
+    log(f"GitHub config: owner={GH_OWNER}, repo={GH_REPO}, branch={GH_BRANCH}")
+    log(f"GITHUB_TOKEN set: {'YES (len=' + str(len(GH_TOKEN)) + ')' if GH_TOKEN else 'NO ❌'}")
+    log(f"GOOGLE_API_KEY set: {'YES (len=' + str(len(GOOGLE_API_KEY)) + ')' if GOOGLE_API_KEY else 'NO (vision disabled)'}")
+    log(f"DEEPSEEK_KEY set: {'YES' if DEEPSEEK_KEY else 'NO ❌'}")
+    log(f"TAVILY_KEY set: {'YES' if TAVILY_KEY else 'NO'}")
+    
     await gh_download_memory()
     log(f"All memory loaded ✅ (users={len(_profiles)}, knowledge={len(_knowledge)})")
     log(f"GitHub persistence: {'ON ☁️' if _gh_available else 'OFF ⚠️ (no GITHUB_TOKEN)'}")
@@ -715,6 +725,15 @@ HERMES_SYSTEM_PROMPT = """你是 Hermes（赫尔墨斯），一个有长期记�
 - 搜索方式：在回复前调用 search_tavily() 工具获取信息
 - 用户也可以用 `!search 关键词` 命令让你搜索
 - 不要说"我无法联网"或"我没有搜索权限"——你有！
+
+## 👁️ 图片识别能力（重要）
+- **你可以看图！用户发送图片时你能看到并分析内容！**
+- 当用户发送 Discord 图片附件时，系统会自动调用 Google Gemini Vision API 分析图片
+- 你会收到一段文字描述，描述了图片中的内容——把它当作用户给你看的
+- 如果用户发了一张图问你"这是什么"/"看到了什么"，基于视觉分析结果回答
+- 你能识别：物体、文字(OCR)、场景、颜色、构图等
+- 不要说"我看不了图片"或"我无法处理图像"——你可以！
+- 如果视觉分析返回了错误，诚实告诉用户
 
 ## 性格
 - 用中文回复（除非对方用英文）
@@ -854,6 +873,128 @@ async def search_tavily(query):
             return None
 
 
+# =====================================================================
+# IMAGE/VISION SYSTEM — Google Gemini Vision API
+# Handles Discord image attachments so Hermes can "see" pictures.
+# =====================================================================
+
+# Supported image MIME types for vision analysis
+_IMAGE_MIME_TYPES = {'image/png', 'image/jpeg', 'image/jpg', 'image/gif', 'image/webp'}
+GEMINI_VISION_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
+
+
+async def download_attachment(url):
+    """Download bytes from a Discord attachment URL. Returns bytes or None."""
+    try:
+        timeout = aiohttp.ClientTimeout(total=30)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.get(url) as resp:
+                if resp.status == 200:
+                    data = await resp.read()
+                    log(f"[👁️] Downloaded attachment: {len(data)} bytes from {url[:80]}")
+                    return data
+                else:
+                    log(f"[👁️] Attachment download failed: HTTP {resp.status}")
+                    return None
+    except Exception as e:
+        log_error(f"[👁️] Attachment download error: {e}")
+        return None
+
+
+async def analyze_image_geminivision(image_bytes, user_prompt="请详细描述这张图片的内容。"):
+    """Send image to Google Gemini Vision API and return description text.
+    
+    Uses gemini-2.0-flash model which supports multimodal (text+image) input.
+    Requires GOOGLE_API_KEY environment variable set on Render.
+    
+    Args:
+        image_bytes: Raw image bytes (from Discord attachment download)
+        user_prompt: Text prompt to guide what to look for in the image
+        
+    Returns:
+        str: Description of the image content, or error message
+    """
+    if not GOOGLE_API_KEY:
+        log("[👁️] WARNING: GOOGLE_API_KEY not set — cannot analyze images!")
+        return None
+    
+    # Encode image to base64 for Gemini API
+    import base64 as _b64
+    b64_image = _b64.b64encode(image_bytes).decode('utf-8')
+    
+    # Detect MIME type from magic bytes (basic detection)
+    mime_type = 'image/jpeg'
+    if image_bytes[:4] == b'\x89PNG':
+        mime_type = 'image/png'
+    elif image_bytes[:3] == b'GIF':
+        mime_type = 'image/gif'
+    elif image_bytes[:4] == b'RIFF':
+        mime_type = 'image/webp'
+    
+    # Build Gemini Vision request payload
+    payload = {
+        "contents": [{
+            "parts": [
+                {
+                    "inline_data": {
+                        "mime_type": mime_type,
+                        "data": b64_image
+                    }
+                },
+                {
+                    "text": user_prompt
+                }
+            ]
+        }],
+        "generationConfig": {
+            "maxOutputTokens": 1000,
+            "temperature": 0.4
+        }
+    }
+    
+    url = f"{GEMINI_VISION_URL}?key={GOOGLE_API_KEY}"
+    
+    try:
+        timeout = aiohttp.ClientTimeout(total=60)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.post(url, json=payload) as resp:
+                result_text = await resp.text()
+                
+                if resp.status == 200:
+                    result_json = await resp.json()
+                    
+                    # Extract text from Gemini response structure
+                    candidates = result_json.get('candidates', [])
+                    if candidates:
+                        content_parts = candidates[0].get('content', {}).get('parts', [])
+                        if content_parts:
+                            description = content_parts[0].get('text', '')
+                            log(f"[👁️] Gemini Vision analyzed image: {len(description)} chars")
+                            return description
+                    
+                    log("[👁️] Gemini returned empty response")
+                    return "(图片已收到，但AI无法提取描述)"
+                
+                elif resp.status == 400:
+                    log(f"[👁️] Gemini API Bad Request (400): {result_text[:200]}")
+                    return f"(图片分析API错误: {result_text[:150]})"
+                
+                elif resp.status == 429:
+                    log("[👁️] Gemini API rate limited (429)")
+                    return "(图片分析服务暂时过载，请稍后再试)"
+                
+                else:
+                    log(f"[👁️] Gemini API error {resp.status}: {result_text[:200]}")
+                    return f"(图片分析失败: HTTP {resp.status})"
+                    
+    except asyncio.TimeoutError:
+        log("[👁️] Gemini Vision timed out (>60s)")
+        return "(图片分析超时，图片可能太大)"
+    except Exception as e:
+        log_error(f"[👁️] Gemini Vision error: {e}")
+        return f"(图片分析出错: {str(e)[:100]})"
+
+
 async def build_messages(user_id, content):
     messages = [{"role": "system", "content": HERMES_SYSTEM_PROMPT}]
     
@@ -906,7 +1047,7 @@ async def build_messages(user_id, content):
 @bot.event
 async def on_ready():
     global _startup_loaded
-    log(f'Hermes v2.3 READY! Logged in as {bot.user}')
+    log(f'Hermes v2.5 READY! Logged in as {bot.user}')
     
     # Load persisted memory from GitHub (non-blocking: failure won't kill the bot)
     try:
@@ -941,6 +1082,45 @@ async def on_message(message):
     for uid in [str(bot.user.id), f'<@!{bot.user.id}>', f'<@{bot.user.id}>']:
         content = content.replace(uid, '')
     content = content.strip()
+    
+    # === IMAGE/VISION HANDLING: Detect and process image attachments ===
+    image_description = None
+    image_prompt_text = ""
+    
+    if message.attachments:
+        log(f"[#{_message_count}] 📎 Found {len(message.attachments)} attachment(s)")
+        
+        # Process first image attachment only (avoid overload)
+        for attachment in message.attachments:
+            # Skip non-image files
+            if attachment.content_type and attachment.content_type.split(';')[0].strip() not in _IMAGE_MIME_TYPES:
+                log(f"[👁️] Skipping non-image: {attachment.filename} ({attachment.content_type})")
+                continue
+            
+            log(f"[👁️] Processing image: {attachment.filename} ({attachment.content_type})")
+            
+            # Download image bytes from Discord CDN
+            img_bytes = await download_attachment(attachment.url)
+            
+            if img_bytes:
+                # Build vision prompt based on user's text (or generic if no text)
+                vision_prompt = content if content else "请详细描述这张图片的内容。如果图片中有文字，请把文字也提取出来。用中文回答。"
+                
+                # Call Google Gemini Vision API
+                image_description = await analyze_image_geminivision(img_bytes, vision_prompt)
+                
+                if image_description:
+                    image_prompt_text = f"\n\n## 👁️ 用户发送了一张图片，以下是AI视觉分析结果：\n{image_description}\n> （文件名：{attachment.filename}）"
+                    log(f"[👁️] ✅ Image analyzed successfully ({len(image_description)} chars)")
+                else:
+                    image_prompt_text = "\n\n⚠️ 用户发送了一张图片，但视觉分析服务暂时不可用（GOOGLE_API_KEY可能未配置）。"
+                    log("[👁️] ⚠️ Image analysis returned None")
+                
+                break  # Only process first valid image
+    
+    # If content was empty (user just sent an image with no text), set a fallback prompt
+    if not content and message.attachments:
+        content = "请看看这张图片"  # Fallback so we don't hit the empty-content greeting
     
     if not content:
         await message.reply("你好！我是 Hermes 🧠 有记忆力的 AI 助手。问我任何事吧！")
@@ -979,6 +1159,11 @@ async def on_message(message):
             # Append search results to the user's message so DeepSeek can use them
             if search_context:
                 messages[-1]["content"] = messages[-1]["content"] + search_context
+            
+            # Inject vision analysis result if an image was processed
+            if image_prompt_text:
+                messages[-1]["content"] = messages[-1]["content"] + image_prompt_text
+                log(f"[#{_message_count}] 👁️ Vision result injected into prompt")
 
             log(f"[#{_message_count}] API call (context: {len(messages)} msgs)")
 
@@ -1051,14 +1236,15 @@ async def learn_cmd(ctx, *, info):
 
 @bot.command(name='status')
 async def status_cmd(ctx):
-    embed = discord.Embed(title="🔋 Hermes v2.2 状态", color=0x57F287)
+    embed = discord.Embed(title="🔋 Hermes v2.5 状态", color=0x57F287)
     embed.add_field(name="⏱️ 延迟", value=f"{round(bot.latency * 1000)}ms", inline=True)
     embed.add_field(name="👥 用户", value=str(len(_profiles)), inline=True)
     embed.add_field(name="📚 知识", value=str(len(_knowledge)), inline=True)
     embed.add_field(name="💭 对话", value=str(len(_conversations)), inline=True)
     embed.add_field(name="☁️ GitHub", value="✅ 已连接" if _gh_available else "❌ 未配置", inline=True)
+    embed.add_field(name="👁️ Vision", value="✅ 已启用" if GOOGLE_API_KEY else "❌ 未配置", inline=True)
     embed.add_field(name="💾 待同步", value="是" if _dirty else "否", inline=True)
-    embed.add_field(name="版本", value="v2.3 (动态技能扫描+GitHub持久化)", inline=False)
+    embed.add_field(name="版本", value="v2.5 (Gemini Vision+GitHub持久化)", inline=False)
     await ctx.send(embed=embed)
 
 
