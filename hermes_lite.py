@@ -881,7 +881,12 @@ async def search_tavily(query):
 
 # Supported image MIME types for vision analysis
 _IMAGE_MIME_TYPES = {'image/png', 'image/jpeg', 'image/jpg', 'image/gif', 'image/webp'}
-GEMINI_VISION_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
+# Gemini Vision models in order of preference (fallback chain)
+_GEMINI_VISION_MODELS = [
+    "gemini-2.0-flash",
+    "gemini-1.5-flash",  
+]
+_GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models"
 
 
 async def download_attachment(url):
@@ -948,52 +953,97 @@ async def analyze_image_geminivision(image_bytes, user_prompt="请详细描述�
             ]
         }],
         "generationConfig": {
-            "maxOutputTokens": 1000,
+            "maxOutputTokens": 1024,
             "temperature": 0.4
         }
     }
     
     url = f"{GEMINI_VISION_URL}?key={GOOGLE_API_KEY}"
     
-    try:
-        timeout = aiohttp.ClientTimeout(total=60)
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-            async with session.post(url, json=payload) as resp:
-                result_text = await resp.text()
-                
-                if resp.status == 200:
-                    result_json = await resp.json()
+    # Retry logic: up to 2 retries with backoff for 429 errors, plus model fallback
+    max_retries = 2
+    
+    for model_name in _GEMINI_VISION_MODELS:
+        url = f"{_GEMINI_BASE_URL}/{model_name}:generateContent?key={GOOGLE_API_KEY}"
+        log(f"[👁️] Trying model: {model_name}")
+        
+        for attempt in range(max_retries + 1):
+            try:
+            timeout = aiohttp.ClientTimeout(total=60)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.post(url, json=payload) as resp:
+                    # FIX: Read JSON directly, NOT .text() first (body is single-use!)
+                    raw_body = await resp.text()
                     
-                    # Extract text from Gemini response structure
-                    candidates = result_json.get('candidates', [])
-                    if candidates:
-                        content_parts = candidates[0].get('content', {}).get('parts', [])
-                        if content_parts:
-                            description = content_parts[0].get('text', '')
-                            log(f"[👁️] Gemini Vision analyzed image: {len(description)} chars")
-                            return description
+                    if resp.status == 200:
+                        # Parse JSON from the body we just read
+                        import json as _json
+                        try:
+                            result_json = _json.loads(raw_body)
+                        except Exception as parse_err:
+                            log(f"[👁️] Failed to parse Gemini JSON response: {parse_err}")
+                            log(f"[👁️] Raw response (first 300 chars): {raw_body[:300]}")
+                            return "(图片分析响应解析失败)"
+                        
+                        # Extract text from Gemini response structure
+                        candidates = result_json.get('candidates', [])
+                        if candidates:
+                            content_parts = candidates[0].get('content', {}).get('parts', [])
+                            if content_parts:
+                                description = content_parts[0].get('text', '')
+                                if description.strip():
+                                    log(f"[👁️] ✅ Gemini Vision OK ({len(description)} chars, attempt {attempt+1})")
+                                    return description
+                        
+                        # Check for safety filter block
+                        block_reason = result_json.get('candidates', [{}])[0].get('finishReason', '')
+                        if block_reason == 'SAFETY':
+                            log("[👁️] ⚠️ Gemini blocked by safety filter")
+                            return "(图片被AI安全过滤器拦截，换一张图试试)"
+                        
+                        prompt_feedback = result_json.get('promptFeedback', {})
+                        if prompt_feedback.get('blockReason'):
+                            log(f"[👁️] ⚠️ Blocked by promptFeedback: {prompt_feedback['blockReason']}")
+                            return "(图片内容触发了安全过滤)"
+                        
+                        log(f"[👁️] ⚠️ Gemini returned empty. Raw keys: {list(result_json.keys())}")
+                        return "(图片已收到，但AI无法提取描述)"
                     
-                    log("[👁️] Gemini returned empty response")
-                    return "(图片已收到，但AI无法提取描述)"
-                
-                elif resp.status == 400:
-                    log(f"[👁️] Gemini API Bad Request (400): {result_text[:200]}")
-                    return f"(图片分析API错误: {result_text[:150]})"
-                
-                elif resp.status == 429:
-                    log("[👁️] Gemini API rate limited (429)")
-                    return "(图片分析服务暂时过载，请稍后再试)"
-                
-                else:
-                    log(f"[👁️] Gemini API error {resp.status}: {result_text[:200]}")
-                    return f"(图片分析失败: HTTP {resp.status})"
+                    elif resp.status == 400:
+                        log(f"[👁️] ❌ Bad Request (400) from {model_name}: {raw_body[:300]}")
+                        # 400 is often model-specific (e.g. model not found) — try next model
+                        break  # Break inner retry loop, continue to next model
                     
-    except asyncio.TimeoutError:
-        log("[👁️] Gemini Vision timed out (>60s)")
-        return "(图片分析超时，图片可能太大)"
-    except Exception as e:
-        log_error(f"[👁️] Gemini Vision error: {e}")
-        return f"(图片分析出错: {str(e)[:100]})"
+                    elif resp.status == 429:
+                        if attempt < max_retries:
+                            wait_time = (attempt + 1) * 3  # 3s, 6s backoff
+                            log(f"[👁️] Rate limited (429), retry {attempt+1}/{max_retries} in {wait_time}s...")
+                            await asyncio.sleep(wait_time)
+                            continue
+                        else:
+                            log("[👁️] ❌ Rate limited after all retries on all models")
+                            return "(图片分析服务繁忙，等几秒后再发一次试试)"
+                    
+                    elif resp.status == 403:
+                        log(f"[👁️] ❌ Forbidden (403): {raw_body[:300]}")
+                        return "(API密钥权限不足或未启用Gemini API)"
+                    
+                    else:
+                        log(f"[👁️] ❌ HTTP {resp.status} from {model_name}: {raw_body[:200]}")
+                        break  # Try next model
+                        
+            except asyncio.TimeoutError:
+                log(f"[👁️] ❌ Timed out (>60s) on {model_name}, attempt {attempt+1}")
+                if attempt < max_retries:
+                    continue
+                break  # Try next model
+            except Exception as e:
+                log_error(f"[👁️] ❌ Error on {model_name} (attempt {attempt+1}): {e}")
+                if attempt < max_retries:
+                    continue
+                break  # Try next model
+    
+    return "(所有模型均失败，图片分析暂时不可用)"
 
 
 async def build_messages(user_id, content):
