@@ -76,12 +76,6 @@
   "869299535271329872": {
     "known_name": "AI自我评估",
     "facts": [
-      "用户运营Hermes Discord机器人（仓库likeabird830/hermes-lite），技术栈包括discord.py、aiohttp、DeepSeek API、Tavily Search，部署在Render免费Web Service",
-      "用户有电商费用计算器脚本/home/ccl83/ecommerce-calculator.py，已安装Canvas Design、Competitive Ads Extractor、Content Research Writer技能",
-      "用户偏好详细需求说明、预算报告和费用清单，希望AI将原始数据整理为结构化分类，要求PDF文字清晰无黑框",
-      "用户使用Comet浏览器，计划迁移书签到Chrome",
-      "用户已安装3个技能：Canvas Design、Competitive Ads Extractor、Content Research Writer",
-      "用户可能在使用支持技能安装的系统（如Claude Code）",
       "用户询问技能数量和自进化能力，回复提到当前有130个精选skills（编号#1到#130），涵盖创意设计、数据研究、AI工具、新媒体运营、代码开发、搜索研究、电商Shopify、大师思维引擎（芒格/费曼/乔布斯/马斯克/纳瓦尔/塔勒布/PG）、创意突破引擎（MrBeast/女娲）等领域，且列表动态增长。",
       "自进化能力有两个核心机制：Self-Evolution (Evolver) v1.51.3，基于GEP协议，自动扫描日志、识别错误模式、选择进化基因、生成改进prompt并审计追踪；Darwin Skill，使用8维评分系统和hill-climbing算法优化，每次优化有git版本控制（棘轮机制）。",
       "触发词：自我进化、self-evolve、自动优化（针对Evolver）；优化skill、达尔文、skill评分（针对Darwin Skill）。",
@@ -125,12 +119,18 @@
       "免费额度：Gemini 1.5 Flash每分钟60次请求免费，Gemini 1.5 Pro每分钟2次请求免费",
       "安全提醒：不要将API Key硬编码或提交到公开仓库，应使用环境变量存储并设置使用限制",
       "代码示例：使用google.generativeai库配置API Key并调用模型",
-      "常见问题：地区限制需VPN，密钥无法使用需检查Generative Language API是否启用，配额耗尽可等待或升级"
+      "常见问题：地区限制需VPN，密钥无法使用需检查Generative Language API是否启用，配额耗尽可等待或升级",
+      "Render 支持部署 Web Service、Static Site 和 Cron Job 三种类型",
+      "Python 项目部署需在根目录创建 requirements.txt 文件",
+      "Node.js 项目需在 package.json 中定义 start 和 build 脚本",
+      "部署 Web Service 时建议选择 Singapore 区域以降低亚洲延迟",
+      "Render 提供免费实例（每月750小时）",
+      "敏感信息（如 API Token）应通过环境变量设置，切勿写在代码中"
     ],
     "preferences": {},
     "first_seen": "2026-05-06T03:50:26.384134",
-    "message_count": 16,
-    "last_active": "2026-05-09T06:01:39.348032",
+    "message_count": 17,
+    "last_active": "2026-05-09T06:07:39.258557",
     "notes": "用户询问上海与温哥华明天的天气对比，助手提供了详细数据并给出活动建议。\n用户是上海的技术爱好者，运营Hermes Discord机器人，偏好凉爽天气和结构化数据处理，使用Comet浏览器。\n用户确认已安装3个特定技能，并了解Hermes AI的能力边界\n用户询问技能和自进化能力，回复详细介绍了100+动态技能和两个自进化机制（Evolver v1.51.3和Darwin Skill），强调系统能从错误中学习并自动优化。\nAI助手拥有动态增长的100+技能库，覆盖多领域，并具备自我优化能力。\n当前技能列表为104个，且通过动态增长和优化机制持续改进。\n用户技能系统包含104个动态增长的技能，支持安装和自优化\n用户询问技能数量，AI回复了121个精选技能及领域分布，强调动态增长\nAI自评为知识型全能助手，类似研究生到准博士水平，有广泛知识但深度和人性化有限。\n对话中完成了对Humanizer技能的优化，增加了自然度评估功能\n用户询问AI自我水平评估，回复给出研究生到准博士的综合评级，并列出强项和薄弱项\nAI在信息处理和代码开发方面达到博士级，但缺乏物理世界经验和直觉判断，创造力依赖已有模式"
   }
 }
