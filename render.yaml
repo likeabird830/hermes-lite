@@ -1,0 +1,21 @@
+# Render.com deployment config for Hermes Lite v2.5
+# This file tells Render exactly how to build and run the bot
+
+services:
+  - type: worker
+    name: hermes-lite
+    runtime: python
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "python hermes_lite.py"
+    plan: free
+    envVars:
+      - key: DISCORD_TOKEN
+        sync: false
+      - key: DEEPSEEK_KEY
+        sync: false
+      - key: TAVILY_API_KEY
+        sync: false
+      - key: GOOGLE_API_KEY
+        sync: false
+      - key: GITHUB_TOKEN
+        sync: false
