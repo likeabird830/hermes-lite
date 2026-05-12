@@ -1438,8 +1438,8 @@ async def status_cmd(ctx):
     await ctx.send(embed=embed)
 
 
-@bot.command(name='help')
-async def help_cmd(ctx):
+@bot.command(name='info')
+async def info_cmd(ctx):
     embed = discord.Embed(
         title="📖 Hermes Lite v2.6 帮助",
         description="所有可用命令（Bot 会在被 @mention 时自动回复）：",
