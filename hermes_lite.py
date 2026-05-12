@@ -283,9 +283,9 @@ async def gh_upload_tasks():
 def add_task(user_id, description):
     """Add a new pending task."""
     global _task_dirty
-    import uuid
+    import uuid, time
     task = {
-        "id": f"task_{int(__import__('time').time()))}_{str(uuid.uuid4())[:8]}",
+        "id": f"task_{int(time.time())}_{str(uuid.uuid4())[:8]}",
         "user_id": str(user_id),
         "user_name": None,
         "description": description[:500],
