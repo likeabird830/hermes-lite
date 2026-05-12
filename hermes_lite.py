@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """
-Hermes Lite v2.5 — Discord Bot with TRUE Persistent Memory + Self-Evolution Engine + Gemini Vision
+Hermes Lite v2.6 — Discord Bot with TRUE Persistent Memory + Self-Evolution Engine + Gemini Vision
 Memory survives Manual Deploy, restarts, and spin-downs.
 Core principle: BOT MUST ALWAYS RESPOND. All memory I/O is non-blocking background.
 v2.3: Dynamic skill scanner — no more hardcoded numbers! Real-time GitHub API skill counting.
 v2.4: Self-Evolution Engine (pure Python) — scans log patterns, generates improvements, evolves system prompt.
 v2.5: Google Gemini Vision integration — can now SEE and analyze image attachments!
+v2.6: 新增 !help 命令、运行时长显示、消息reaction反馈（👀/✅/❌）、修复运算符优先级bug
 """
 
 import sys
@@ -76,6 +77,7 @@ intents.messages = True
 
 bot = commands.Bot(command_prefix='!', intents=intents)
 _message_count = 0
+_start_time = None
 
 DEEPSEEK_URL = "https://api.deepseek.com/chat/completions"
 GH_API_BASE = "https://api.github.com"
@@ -424,7 +426,7 @@ async def get_skill_count_for_prompt():
 
 
 # =====================================================================
-# SELF-EVOLUTION ENGINE v2.4 — Pure Python, Render-compatible
+# SELF-EVOLUTION ENGINE v2.6 — Pure Python, Render-compatible
 # Scans runtime logs → identifies error patterns → improves system prompt
 # All evolution data persisted via GitHub API (no local filesystem needed)
 # =====================================================================
@@ -664,7 +666,7 @@ _startup_loaded = False
 # =====================================================================
 
 
-HERMES_SYSTEM_PROMPT = """你是 Lite（Hermes Lite），一个有长期记忆、会不断学习和进化的 AI 助手。
+HERMES_SYSTEM_PROMPT = """你是 Lite（Hermes Lite v2.6），一个有长期记忆、会不断学习和进化的 AI 助手。
 
 ## 核心身份
 - 你的名字是 **Lite**，是运行在云端服务器（Render）上的轻量版 AI 助手
@@ -1061,7 +1063,7 @@ async def build_messages(user_id, content):
     # 🔍 Dynamic skill stats: inject real-time skill count so Hermes never guesses
     try:
         skill_summary = await get_skill_count_for_prompt()
-        if skill_summary and "技能" in content.lower() or "skill" in content.lower():
+        if skill_summary and ("技能" in content.lower() or "skill" in content.lower()):
             messages.append({
                 "role": "system",
                 "content": f"## 📊 技能统计快照（实时扫描）\n\n{skill_summary}\n\n> 这是当前最新的技能数量，用这个数据回答用户，不要用记忆中的旧数字。"
@@ -1098,7 +1100,9 @@ async def build_messages(user_id, content):
 @bot.event
 async def on_ready():
     global _startup_loaded
-    log(f'Hermes v2.5 READY! Logged in as {bot.user}')
+    log(f'Hermes v2.6 READY! Logged in as {bot.user}')
+    global _start_time
+    _start_time = datetime.datetime.now()
     
     # Load persisted memory from GitHub (non-blocking: failure won't kill the bot)
     try:
@@ -1180,6 +1184,7 @@ async def on_message(message):
     user_id = str(message.author.id)
     
     try:
+        await message.add_reaction('👀')
         async with message.channel.typing():
             # === Proactive Search: auto-search for queries needing real-time info ===
             search_context = ""
@@ -1224,6 +1229,7 @@ async def on_message(message):
             if len(response) > 1900:
                 response = response[:1900] + "..."
             await message.reply(response)
+            await message.add_reaction('✅')
             
             add_conversation_msg(user_id, "user", content)
             add_conversation_msg(user_id, "assistant", response)
@@ -1239,6 +1245,7 @@ async def on_message(message):
     except Exception as e:
         log_error(f"[#{_message_count}] FATAL: {e}")
         try:
+            await message.add_reaction('❌')
             await message.reply(f"抱歉出错了 😵 {str(e)[:150]}")
         except:
             pass
@@ -1287,7 +1294,7 @@ async def learn_cmd(ctx, *, info):
 
 @bot.command(name='status')
 async def status_cmd(ctx):
-    embed = discord.Embed(title="🔋 Hermes v2.5 状态", color=0x57F287)
+    embed = discord.Embed(title="🔋 Hermes v2.6 状态", color=0x57F287)
     embed.add_field(name="⏱️ 延迟", value=f"{round(bot.latency * 1000)}ms", inline=True)
     embed.add_field(name="👥 用户", value=str(len(_profiles)), inline=True)
     embed.add_field(name="📚 知识", value=str(len(_knowledge)), inline=True)
@@ -1295,7 +1302,33 @@ async def status_cmd(ctx):
     embed.add_field(name="☁️ GitHub", value="✅ 已连接" if _gh_available else "❌ 未配置", inline=True)
     embed.add_field(name="👁️ Vision", value="✅ 已启用" if GOOGLE_API_KEY else "❌ 未配置", inline=True)
     embed.add_field(name="💾 待同步", value="是" if _dirty else "否", inline=True)
-    embed.add_field(name="版本", value="v2.5 (Gemini Vision+GitHub持久化)", inline=False)
+    # Uptime
+    if '_start_time' in globals() and _start_time:
+        uptime = datetime.datetime.now() - _start_time
+        hrs, rem = divmod(int(uptime.total_seconds()), 3600)
+        mins, secs = divmod(rem, 60)
+        embed.add_field(name="⏰ 运行时长", value=f"{hrs}时{mins}分", inline=True)
+    embed.add_field(name="版本", value="v2.6 (Gemini Vision+GitHub持久化+帮助命令)", inline=False)
+    await ctx.send(embed=embed)
+
+
+@bot.command(name='help')
+async def help_cmd(ctx):
+    embed = discord.Embed(
+        title="📖 Hermes Lite v2.6 帮助",
+        description="所有可用命令（Bot 会在被 @mention 时自动回复）：",
+        color=0x3498DB
+    )
+    embed.add_field(name="⏱️ !ping", value="测试 Bot 延迟", inline=True)
+    embed.add_field(name="🧠 !status", value="查看系统状态（含运行时长）", inline=True)
+    embed.add_field(name="🧠 !memory", value="查看记住了关于你的哪些事", inline=False)
+    embed.add_field(name="🔍 !search <关键词>", value="联网搜索实时信息", inline=False)
+    embed.add_field(name="📝 !learn <内容>", value="让 Hermes 记住一件事实", inline=False)
+    embed.add_field(name="🗑️ !forget", value="清除关于你的记忆", inline=False)
+    embed.add_field(name="💾 !save", value="强制保存记忆到 GitHub", inline=False)
+    embed.add_field(name="🔍 !skills", value="实时扫描技能库统计", inline=False)
+    embed.add_field(name="🧬 !evolve [--run]", value="查看/触发自进化引擎", inline=False)
+    embed.set_footer(text="Hermes Lite v2.6 · Discord Bot")
     await ctx.send(embed=embed)
 
 
@@ -1357,7 +1390,7 @@ async def evolve_cmd(ctx):
         status = get_evolution_status()
         
         embed = discord.Embed(
-            title="🧬 Self-Evolution Engine v2.4",
+            title="🧬 Self-Evolution Engine v2.6",
             description="Pure Python evolution engine — Render-compatible",
             color=0x9B59B6  # Purple
         )
