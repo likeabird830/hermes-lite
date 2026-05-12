@@ -87,6 +87,7 @@ MEMORY_FILES = {
     "profiles": "hermes_profiles.json",
     "knowledge": "hermes_knowledge.md"
 }
+TASKS_FILE = "hermes_tasks.json"  # Remote task inbox for 大宝
 
 # =====================================================================
 # MEMORY SYSTEM v2.2 — GitHub API backed, truly persistent
@@ -98,6 +99,11 @@ _conversations = {}  # L1: Active conversations (RAM only)
 _save_lock = threading.Lock()
 _dirty = False
 _gh_available = bool(GH_TOKEN)  # Whether GitHub persistence is configured
+
+# Task system: Lite writes tasks → GitHub → 大宝 (local) picks them up
+_tasks = []          # In-memory task list
+_task_lock = threading.Lock()
+_task_dirty = False
 
 
 async def _gh_api(method, path, **kwargs):
@@ -213,6 +219,121 @@ async def github_sync_loop():
                 await gh_upload_memory()
         except Exception as e:
             log_error(f"GitHub sync loop error: {e}")
+
+
+# =====================================================================
+# TASK SYSTEM — Lite writes tasks → GitHub → 大宝 (local) picks up
+# =====================================================================
+
+async def gh_download_tasks():
+    """Download hermes_tasks.json from GitHub at startup."""
+    global _tasks
+    result = await _gh_api("GET", f"/repos/{GH_OWNER}/{GH_REPO}/contents/{TASKS_FILE}?ref={GH_BRANCH}")
+    if result and result.get("content"):
+        try:
+            data = json.loads(base64.b64decode(result["content"]))
+            if isinstance(data, dict) and "tasks" in data:
+                _tasks = data["tasks"]
+                log(f"[📋] Loaded {len(_tasks)} tasks from GitHub")
+            elif isinstance(data, list):
+                _tasks = data
+                log(f"[📋] Loaded {len(_tasks)} tasks from GitHub (legacy format)")
+        except Exception as e:
+            log_error(f"Failed to parse tasks from GH: {e}")
+    else:
+        _tasks = []
+        log("[📋] No tasks file on GitHub yet, starting empty")
+
+
+async def gh_upload_tasks():
+    """Upload current tasks to GitHub."""
+    global _task_dirty
+    if not _task_dirty or not _gh_available:
+        return
+    with _task_lock:
+        try:
+            import time
+            ts = int(time.time())
+            payload_data = json.dumps({
+                "tasks": _tasks,
+                "last_update": datetime.datetime.now().isoformat(),
+                "source": "hermes-lite"
+            }, ensure_ascii=False, indent=2)
+            content_b64 = base64.b64encode(payload_data.encode()).decode()
+
+            result = await _gh_api("GET", f"/repos/{GH_OWNER}/{GH_REPO}/contents/{TASKS_FILE}?ref={GH_BRANCH}")
+            sha = result.get("sha") if result else None
+
+            payload = json.dumps({
+                "message": f"[Hermes] 📋 Tasks update ({len(_tasks)} tasks) [auto-{ts}]",
+                "content": content_b64,
+                "branch": GH_BRANCH,
+                **({"sha": sha} if sha else {})
+            })
+            r = await _gh_api("PUT", f"/repos/{GH_OWNER}/{GH_REPO}/contents/{TASKS_FILE}", data=payload.encode())
+            if r:
+                _task_dirty = False
+                log(f"[📋] Tasks saved to GitHub ✅ ({len(_tasks)} tasks)")
+            else:
+                log("[📋] GitHub tasks save FAILED")
+        except Exception as e:
+            log_error(f"[📋] GitHub tasks upload error: {e}")
+
+
+def add_task(user_id, description):
+    """Add a new pending task."""
+    global _task_dirty
+    import uuid
+    task = {
+        "id": f"task_{int(__import__('time').time()))}_{str(uuid.uuid4())[:8]}",
+        "user_id": str(user_id),
+        "user_name": None,
+        "description": description[:500],
+        "status": "pending",
+        "created_at": datetime.datetime.now().isoformat(),
+        "result": None,
+        "completed_at": None,
+        "error": None
+    }
+    # Try to get user name
+    profile = get_profile(user_id)
+    if profile.get("known_name"):
+        task["user_name"] = profile["known_name"]
+    _tasks.append(task)
+    _task_dirty = True
+    log(f"[📋] New task added: {description[:50]}...")
+    return task
+
+
+def get_pending_tasks():
+    """Return all pending tasks."""
+    return [t for t in _tasks if t["status"] == "pending"]
+
+
+def mark_task_done(task_id, result=None, error=None):
+    """Mark a task as completed or failed."""
+    global _task_dirty
+    for t in _tasks:
+        if t["id"] == task_id:
+            t["status"] = "completed" if not error else "failed"
+            t["result"] = result[:2000] if result else None
+            t["error"] = error[:500] if error else None
+            t["completed_at"] = datetime.datetime.now().isoformat()
+            _task_dirty = True
+            log(f"[📋] Task {task_id} marked {t['status']}")
+            return True
+    return False
+
+
+async def task_sync_loop():
+    """Background loop: sync tasks to GitHub every 60 seconds when dirty."""
+    while True:
+        try:
+            await asyncio.sleep(60)
+            if _task_dirty:
+                await gh_upload_tasks()
+        except Exception as e:
+            log_error(f"Task sync loop error: {e}")
 
 
 # ---- L2: User Profiles (same API, just storage backend changed) ----
@@ -1115,6 +1236,11 @@ async def on_ready():
     # Start background GitHub sync loop
     asyncio.create_task(github_sync_loop())
 
+    # Load tasks from GitHub
+    await gh_download_tasks()
+
+    # Start background Task sync loop
+    asyncio.create_task(task_sync_loop())
 
 @bot.event
 async def on_message(message):
@@ -1416,6 +1542,53 @@ async def evolve_cmd(ctx):
         
         embed.set_footer(text="每10条消息自动扫描一次 | 数据通过GitHub持久化")
         await ctx.send(embed=embed)
+
+
+@bot.command(name='task')
+async def task_cmd(ctx, *, description):
+    """提交任务给大宝（本地）执行。用法：!task 帮我分析Accio路演材料"""
+    if not description or len(description.strip()) < 2:
+        await ctx.send("用法：`!task 任务描述`")
+        return
+    task = add_task(str(ctx.author.id), description.strip())
+    name = get_profile(str(ctx.author.id)).get("known_name") or "匿名"
+    await ctx.send(f"📋 任务已收到！\n**#{task['id'][:16]}** — {description[:100]}\n大宝会在下次上线时处理 ✅")
+    log(f"[📋] Task from {name} (ID={ctx.author.id}): {description[:80]}")
+
+
+@bot.command(name='tasks')
+async def tasks_cmd(ctx):
+    """查看任务列表。"""
+    pending = get_pending_tasks()
+    completed = [t for t in _tasks if t["status"] in ("completed", "failed")][-10:]
+    embed = discord.Embed(title="📋 任务列表", color=0xF1C40B)
+    if pending:
+        lines = []
+        for t in pending[-8:]:
+            name = t.get("user_name") or t["user_id"][:8]
+            lines.append(f"• `#{t['id'][:12]}` [{name}] {t['description'][:60]}")
+        embed.add_field(name=f"⏳ 待处理 ({len(pending)})", value="\n".join(lines) or "无", inline=False)
+    else:
+        embed.add_field(name="⏳ 待处理", value="无待处理任务 ✅", inline=False)
+    if completed:
+        lines = []
+        for t in completed:
+            status_emoji = "✅" if t["status"] == "completed" else "❌"
+            lines.append(f"{status_emoji} {t['description'][:50]}")
+        embed.add_field(name="📜 最近完成", value="\n".join(lines), inline=False)
+    embed.set_footer(text=f"共 {len(_tasks)} 个任务 | 大宝下次上线时处理")
+    await ctx.send(embed=embed)
+
+
+@bot.command(name='task_clear')
+async def task_clear_cmd(ctx):
+    """清除已完成的任务记录（保留待处理）。"""
+    global _task_dirty, _tasks
+    before = len(_tasks)
+    _tasks = [t for t in _tasks if t["status"] == "pending"]
+    removed = before - len(_tasks)
+    _task_dirty = True
+    await ctx.send(f"🗑️ 已清除 {removed} 条已完成任务记录。")
 
 
 # ==================== STARTUP & HEALTH CHECK ====================
