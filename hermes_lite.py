@@ -971,11 +971,11 @@ async def analyze_image_geminivision(image_bytes, user_prompt="请详细描述�
         
         for attempt in range(max_retries + 1):
             try:
-            timeout = aiohttp.ClientTimeout(total=60)
-            async with aiohttp.ClientSession(timeout=timeout) as session:
-                async with session.post(url, json=payload) as resp:
-                    # FIX: Read JSON directly, NOT .text() first (body is single-use!)
-                    raw_body = await resp.text()
+                timeout = aiohttp.ClientTimeout(total=60)
+                async with aiohttp.ClientSession(timeout=timeout) as session:
+                    async with session.post(url, json=payload) as resp:
+                        # FIX: Read JSON directly, NOT .text() first (body is single-use!)
+                        raw_body = await resp.text()
                     
                     if resp.status == 200:
                         # Parse JSON from the body we just read
