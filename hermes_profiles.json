@@ -1,6 +1,6 @@
 {
   "869299535271329872": {
-    "known_name": "Lite",
+    "known_name": "ccl83",
     "facts": [
       "用户发送了一个名为climber_toolkit_tote.jpg的图片文件，但视觉分析服务过载未解析成功",
       "用户自称Lite",
@@ -11,12 +11,16 @@
       "用户能写代码/调试",
       "用户能记住重要信息",
       "用户自称Lite，与AI同名",
-      "用户曾发送图片文件climber_toolkit_tote.jpg但未成功解析"
+      "用户曾发送图片文件climber_toolkit_tote.jpg但未成功解析",
+      "主人是ccl83，Discord用户likeabird830，43岁，住温哥华，保险助理兼独立开发者，有ADHD倾向",
+      "主人当前负责四件大事：Hermes Lite v2.6维护、品牌命名重启（需10个新选项并查重）、AI毛绒玩具20库存清仓、Accio Launchpad面试材料",
+      "技术配置：Lite使用DeepSeek API（无Vision），Vision后援在WorkBuddy本地Gemini 3 Flash",
+      "行为准则：去AI味、用表格、ADHD友好，称呼主人为'主人'，自称Lite或Hermes"
     ],
     "preferences": {},
     "first_seen": "2026-05-09T07:05:21.117477",
-    "message_count": 3,
-    "last_active": "2026-05-12T20:49:01.083448",
-    "notes": "用户尝试发送图片但视觉分析服务暂时不可用，建议用户稍后重试或描述内容。\n用户Lite是一个多功能轻量AI助手，具备搜索、图片分析、决策支持、编程调试和记忆功能。\n用户名为Lite，发送过未解析的图片，身份信息待确认"
+    "message_count": 4,
+    "last_active": "2026-05-12T20:52:46.130485",
+    "notes": "用户尝试发送图片但视觉分析服务暂时不可用，建议用户稍后重试或描述内容。\n用户Lite是一个多功能轻量AI助手，具备搜索、图片分析、决策支持、编程调试和记忆功能。\n用户名为Lite，发送过未解析的图片，身份信息待确认\n主人ccl83是43岁温哥华保险助理兼独立开发者，有ADHD倾向，当前聚焦Hermes Lite维护、品牌命名、AI玩具清仓和Accio Launchpad，Lite需按去AI味、表格化、ADHD友好的方式工作。"
   }
 }
