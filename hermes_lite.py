@@ -386,6 +386,24 @@ def build_user_context(user_id):
     if profile.get("preferences"):
         prefs = ", ".join(f"{k}={v}" for k, v in list(profile["preferences"].items())[:5])
         parts.append(f"偏好：{prefs}")
+
+    # ef-chenli system: load external prompt for ccl83
+    if user_id == "869299535271329872":
+        import os as _os
+        _ef_paths = [
+            _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "ef_chenli_prompt.md"),
+            _os.path.join(_os.path.expanduser("~"), ".hermes", "hermes-agent", "ef_chenli_prompt.md"),
+        ]
+        for _p in _ef_paths:
+            if _os.path.exists(_p):
+                try:
+                    with open(_p, "r", encoding="utf-8") as _f:
+                        parts.append("\n" + _f.read() + "\n")
+                    print(f"[ef-chenli] Loaded from {_p}")
+                    break
+                except Exception as _e:
+                    print(f"[ef-chenli] Error reading {_p}: {_e}")
+
     return "\n\n".join(parts)
 
 
