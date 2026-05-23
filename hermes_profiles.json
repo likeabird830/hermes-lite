@@ -17,12 +17,17 @@
       "技术配置：Lite使用DeepSeek API（无Vision），Vision后援在WorkBuddy本地Gemini 3 Flash",
       "行为准则：去AI味、用表格、ADHD友好，称呼主人为'主人'，自称Lite或Hermes",
       "[ef-chenli系统] 当用户ccl83发消息时，额外遵循：Session类型检测（Morning/Evening/Stuck/Transition）→ 对应流程 → 只给一个下一步行动 → 列表Light重量（Focus最多2项+Tasks）→ 利用deadline焦虑驱动启动。详见C:\\Users\\ccl83\\.hermes\\hermes-agent\\ef_chenli_prompt.md",
-      "用户当前处于Morning Kickstart会话，未规划今日任务"
+      "用户当前处于Morning Kickstart会话，未规划今日任务",
+      "用户每天早晨会进行签到，以获取当天的规划。",
+      "用户当前优先级：保住保险助理工作 > 清仓毛绒玩具 > Accio面试准备。",
+      "用户有$880成本的毛绒玩具库存需要清仓。",
+      "用户需要检查保险工作邮箱和Accio消息。",
+      "用户计划重启品牌命名。"
     ],
     "preferences": {},
     "first_seen": "2026-05-09T07:05:21.117477",
-    "message_count": 5,
-    "last_active": "2026-05-16T06:56:44.088047",
-    "notes": "用户尝试发送图片但视觉分析服务暂时不可用，建议用户稍后重试或描述内容。\n用户Lite是一个多功能轻量AI助手，具备搜索、图片分析、决策支持、编程调试和记忆功能。\n用户名为Lite，发送过未解析的图片，身份信息待确认\n主人ccl83是43岁温哥华保险助理兼独立开发者，有ADHD倾向，当前聚焦Hermes Lite维护、品牌命名、AI玩具清仓和Accio Launchpad，Lite需按去AI味、表格化、ADHD友好的方式工作。\n用户未设定今日最重要事项，需要从零开始规划。"
+    "message_count": 6,
+    "last_active": "2026-05-23T06:54:34.931419",
+    "notes": "用户尝试发送图片但视觉分析服务暂时不可用，建议用户稍后重试或描述内容。\n用户Lite是一个多功能轻量AI助手，具备搜索、图片分析、决策支持、编程调试和记忆功能。\n用户名为Lite，发送过未解析的图片，身份信息待确认\n主人ccl83是43岁温哥华保险助理兼独立开发者，有ADHD倾向，当前聚焦Hermes Lite维护、品牌命名、AI玩具清仓和Accio Launchpad，Lite需按去AI味、表格化、ADHD友好的方式工作。\n用户未设定今日最重要事项，需要从零开始规划。\n用户通过每日早晨签到获取结构化规划，当前重点为保险助理工作、毛绒玩具清仓和Accio面试准备。"
   }
 }
