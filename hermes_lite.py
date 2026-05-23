@@ -1499,6 +1499,34 @@ async def memory_cmd(ctx):
     await ctx.send(embed=embed)
 
 
+@bot.command(name='synclog')
+async def synclog_cmd(ctx):
+    """Manually force upload conversation log to GitHub."""
+    if not _gh_available:
+        await ctx.send("❌ GitHub 未配置")
+        return
+    await gh_upload_conv_log()
+    await ctx.send(f"✅ 对话日志已上传（{len(_conv_log)} 条）")
+
+
+@bot.command(name='convlog')
+async def convlog_cmd(ctx, count: int = 5):
+    """View recent conversation log entries."""
+    if not _conv_log:
+        await ctx.send("📋 对话日志为空")
+        return
+    entries = _conv_log[-count:]
+    lines = [f"📋 最近 {len(entries)} 条对话："]
+    for e in reversed(entries):
+        ts = e.get('ts', '?')[:16]
+        user = e.get('username', '?')
+        umsg = e.get('user_msg', '')[:50]
+        blen = e.get('msg_len', 0)
+        lines.append(f"`{ts}` **{user}**: {umsg}... → Lite回复({blen}字)")
+    await ctx.send("\\n".join(lines))
+
+
+
 @bot.command(name='forget')
 async def forget_cmd(ctx):
     uid = str(ctx.author.id)
