@@ -88,6 +88,7 @@ MEMORY_FILES = {
     "knowledge": "hermes_knowledge.md"
 }
 TASKS_FILE = "hermes_tasks.json"  # Remote task inbox for 大宝
+CONV_LOG_FILE = "hermes_conv_log.json"  # Conversation summary log for weekly review
 
 # =====================================================================
 # MEMORY SYSTEM v2.2 — GitHub API backed, truly persistent
@@ -104,6 +105,11 @@ _gh_available = bool(GH_TOKEN)  # Whether GitHub persistence is configured
 _tasks = []          # In-memory task list
 _task_lock = threading.Lock()
 _task_dirty = False
+
+# Conversation log: records summaries for weekly review
+_conv_log = []         # In-memory conversation log entries
+_conv_log_lock = threading.Lock()
+_conv_log_dirty = False
 
 
 async def _gh_api(method, path, **kwargs):
@@ -334,6 +340,69 @@ async def task_sync_loop():
                 await gh_upload_tasks()
         except Exception as e:
             log_error(f"Task sync loop error: {e}")
+
+
+async def gh_upload_conv_log():
+    """Upload conversation log to GitHub (appends new entries)."""
+    global _conv_log_dirty
+    if not _conv_log_dirty or not _gh_available:
+        return
+    with _conv_log_lock:
+        try:
+            payload_data = json.dumps({
+                "entries": _conv_log[-500:],  # Keep last 500 entries
+                "last_update": datetime.datetime.now().isoformat(),
+                "source": "hermes-lite"
+            }, ensure_ascii=False, indent=2)
+            content_b64 = base64.b64encode(payload_data.encode()).decode()
+
+            result = await _gh_api("GET", f"/repos/{GH_OWNER}/{GH_REPO}/contents/{CONV_LOG_FILE}?ref={GH_BRANCH}")
+            sha = result.get("sha") if result else None
+
+            payload = json.dumps({
+                "message": f"[Hermes] Conversation log update ({len(_conv_log)} entries)",
+                "content": content_b64,
+                "branch": GH_BRANCH,
+                **({"sha": sha} if sha else {})
+            })
+            r = await _gh_api("PUT", f"/repos/{GH_OWNER}/{GH_REPO}/contents/{CONV_LOG_FILE}", data=payload.encode())
+            if r:
+                _conv_log_dirty = False
+                log(f"[ConvLog] Uploaded {len(_conv_log)} entries to GitHub")
+        except Exception as e:
+            log_error(f"Conv log upload error: {e}")
+
+
+async def conv_log_sync_loop():
+    """Background loop: sync conversation log to GitHub every 120 seconds."""
+    while True:
+        try:
+            await asyncio.sleep(120)
+            if _conv_log_dirty:
+                await gh_upload_conv_log()
+        except Exception as e:
+            log_error(f"Conv log sync loop error: {e}")
+
+
+def log_conversation_entry(user_id, username, channel, user_msg, bot_response, has_image=False):
+    """Add a conversation summary entry to the in-memory log."""
+    global _conv_log_dirty
+    with _conv_log_lock:
+        entry = {
+            "ts": datetime.datetime.now().isoformat(),
+            "user_id": user_id,
+            "username": username,
+            "channel": channel,
+            "user_msg": user_msg[:300],
+            "bot_response": bot_response[:500],
+            "has_image": has_image,
+            "msg_len": len(bot_response),
+        }
+        _conv_log.append(entry)
+        # Keep in-memory buffer bounded
+        if len(_conv_log) > 500:
+            _conv_log = _conv_log[-500:]
+        _conv_log_dirty = True
 
 
 # ---- L2: User Profiles (same API, just storage backend changed) ----
@@ -1260,6 +1329,9 @@ async def on_ready():
     # Start background Task sync loop
     asyncio.create_task(task_sync_loop())
 
+    # Phase 2: Start conversation log sync loop
+    asyncio.create_task(conv_log_sync_loop())
+
 @bot.event
 async def on_message(message):
     global _message_count
@@ -1380,7 +1452,17 @@ async def on_message(message):
             touch_profile(user_id)
             
             log(f"[#{_message_count}] Reply sent ✅")
-            
+
+            # Phase 2: Log conversation summary for weekly review
+            log_conversation_entry(
+                user_id=user_id,
+                username=str(message.author),
+                channel=getattr(message.channel, 'name', 'DM'),
+                user_msg=content,
+                bot_response=response,
+                has_image=bool(image_description)
+            )
+
             # Self-evolution: NON-BLOCKING background task
             asyncio.create_task(extract_memories_bg(user_id, content, response))
             # Self-evolution engine: scan logs every ~10 messages
