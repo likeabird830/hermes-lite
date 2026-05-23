@@ -386,7 +386,7 @@ async def conv_log_sync_loop():
 
 def log_conversation_entry(user_id, username, channel, user_msg, bot_response, has_image=False):
     """Add a conversation summary entry to the in-memory log."""
-    global _conv_log_dirty
+    global _conv_log, _conv_log_dirty
     with _conv_log_lock:
         entry = {
             "ts": datetime.datetime.now().isoformat(),
