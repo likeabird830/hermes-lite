@@ -1310,6 +1310,29 @@ async def on_ready():
     global _startup_loaded
     log(f'Hermes v2.6 READY! Logged in as {bot.user}')
     global _start_time
+    # ── Global exception handler (catches unhandled async exceptions) ──
+    try:
+        loop = asyncio.get_running_loop()
+        def _handle_exception(loop, context):
+            import traceback as _tb
+            exc = context.get('exception')
+            msg = str(exc) if exc else context['message']
+            err = f"🚨 UNHANDLED: {msg}\n"
+            print(err, flush=True)
+            try:
+                with open('/tmp/hermes_crash.log', 'a') as _f:
+                    _f.write(f"[{datetime.datetime.now().isoformat()}] {err}")
+                    if exc:
+                        _tb.print_exception(type(exc), exc, exc.__traceback__, file=_f)
+                        _f.write("\n")
+            except:
+                pass
+        loop.set_exception_handler(_handle_exception)
+        log('[🛡️] Global exception handler installed')
+    except Exception as e:
+        log_error(f"Failed to install exception handler: {e}")
+    
+
     _start_time = datetime.datetime.now()
     
     # Load persisted memory from GitHub (non-blocking: failure won't kill the bot)
@@ -1497,6 +1520,17 @@ async def memory_cmd(ctx):
         embed.add_field(name="⚙️ 偏好", value=", ".join(f"{k}={v}" for k, v in list(p["preferences"].items())[:4]), inline=False)
     embed.set_footer(text=f"{'☁️ 已备份到GitHub' if _gh_available else '⚠️ 仅本地缓存'}")
     await ctx.send(embed=embed)
+
+
+@bot.command(name='ping')
+async def ping_cmd(ctx):
+    """Simple connectivity test."""
+    import time
+    t0 = time.time()
+    msg = await ctx.send("🏓 Pong...")
+    dt = int((time.time() - t0) * 1000)
+    await msg.edit(content=f"🏓 Pong! Latency: {dt}ms | Bot: {round(bot.latency*1000)}ms")
+
 
 
 @bot.command(name='synclog')
