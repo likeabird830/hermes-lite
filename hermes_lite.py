@@ -1502,11 +1502,6 @@ async def on_message(message):
 
 # ==================== COMMANDS ====================
 
-@bot.command(name='ping')
-async def ping_cmd(ctx):
-    await ctx.send(f'Pong! 🏓 {round(bot.latency * 1000)}ms')
-
-
 @bot.command(name='memory')
 async def memory_cmd(ctx):
     p = get_profile(str(ctx.author.id))
