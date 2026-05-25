@@ -1320,7 +1320,7 @@ async def on_ready():
             err = f"🚨 UNHANDLED: {msg}\n"
             print(err, flush=True)
             try:
-                with open('/tmp/hermes_crash.log', 'a') as _f:
+                with open('hermes_crash.log', 'a', encoding='utf-8') as _f:
                     _f.write(f"[{datetime.datetime.now().isoformat()}] {err}")
                     if exc:
                         _tb.print_exception(type(exc), exc, exc.__traceback__, file=_f)
