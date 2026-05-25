@@ -349,8 +349,32 @@ async def gh_upload_conv_log():
         return
     with _conv_log_lock:
         try:
+            # Merge with remote entries to avoid overwriting
+            merged_entries = list(_conv_log)
+            try:
+                remote = await _gh_api("GET", f"/repos/{GH_OWNER}/{GH_REPO}/contents/{CONV_LOG_FILE}?ref={GH_BRANCH}")
+                if remote and remote.get("type") == "file":
+                    import base64
+                    remote_content = base64.b64decode(remote["content"]).decode("utf-8")
+                    remote_data = json.loads(remote_content)
+                    remote_entries = remote_data.get("entries", [])
+                    # Deduplicate by (ts, user_msg) tuple
+                    seen = set()
+                    for e in merged_entries:
+                        seen.add((e.get("ts"), e.get("user_msg", "")[:50]))
+                    for e in remote_entries:
+                        key = (e.get("ts"), e.get("user_msg", "")[:50])
+                        if key not in seen:
+                            merged_entries.append(e)
+                            seen.add(key)
+                    merged_entries.sort(key=lambda x: x.get("ts", ""))
+                    merged_entries = merged_entries[-500:]
+                    log(f"[ConvLog] Merged: {len(_conv_log)} local + {len(remote_entries)} remote = {len(merged_entries)} total")
+            except Exception as me:
+                log(f"[ConvLog] Merge skipped (will overwrite): {me}")
+
             payload_data = json.dumps({
-                "entries": _conv_log[-500:],  # Keep last 500 entries
+                "entries": merged_entries,  # Use merged entries
                 "last_update": datetime.datetime.now().isoformat(),
                 "source": "hermes-lite"
             }, ensure_ascii=False, indent=2)
@@ -371,6 +395,28 @@ async def gh_upload_conv_log():
                 log(f"[ConvLog] Uploaded {len(_conv_log)} entries to GitHub")
         except Exception as e:
             log_error(f"Conv log upload error: {e}")
+
+
+async def gh_download_conv_log():
+    """Download conversation log from GitHub on startup to restore history."""
+    global _conv_log
+    if not _gh_available:
+        log("[ConvLog] GitHub not available, skipping restore")
+        return
+    try:
+        r = await _gh_api("GET", f"/repos/{GH_OWNER}/{GH_REPO}/contents/{CONV_LOG_FILE}?ref={GH_BRANCH}")
+        if r and r.get("type") == "file":
+            import base64
+            file_content = base64.b64decode(r["content"]).decode("utf-8")
+            log_data = json.loads(file_content)
+            entries = log_data.get("entries", [])
+            with _conv_log_lock:
+                _conv_log = entries[-500:]  # Keep last 500
+            log(f"[ConvLog] ✅ Restored {len(_conv_log)} entries from GitHub (last_update: {log_data.get('last_update', 'unknown')[:19]})")
+        else:
+            log("[ConvLog] No existing conv_log on GitHub, starting fresh")
+    except Exception as e:
+        log_error(f"[ConvLog] Restore failed: {e}")
 
 
 async def conv_log_sync_loop():
@@ -1395,6 +1441,9 @@ async def on_ready():
 
     # Start background Task sync loop
     asyncio.create_task(task_sync_loop())
+
+    # Phase 2: Restore conversation log from GitHub
+    await gh_download_conv_log()
 
     # Phase 2: Start conversation log sync loop
     asyncio.create_task(conv_log_sync_loop())
