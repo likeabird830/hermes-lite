@@ -1305,6 +1305,47 @@ async def build_messages(user_id, content):
 
 # ==================== BOT EVENTS ====================
 
+# ── Crash Log Upload on Startup ──
+async def _upload_crash_log():
+    """On startup, if hermes_crash.log exists, upload it to GitHub for diagnosis."""
+    import os, base64, json as _json
+    log("📋 Checking for previous crash log...")
+    if not os.path.exists('hermes_crash.log'):
+        return
+    if not _gh_available:
+        log("⚠️ GitHub not available, keeping crash log locally")
+        return
+    try:
+        with open('hermes_crash.log', 'r', encoding='utf-8') as _f:
+            crash_content = _f.read()
+        log(f"📋 Found crash log ({len(crash_content)} chars), uploading to GitHub...")
+        content_b64 = base64.b64encode(crash_content.encode('utf-8')).decode('ascii')
+        # Get SHA if file already exists on GitHub
+        sha = None
+        try:
+            resp = await _gh_api("GET", f"repos/{GITHUB_REPO}/contents/hermes_crash.log")
+            body = await resp.json()
+            sha = body.get('sha') if isinstance(body, dict) else None
+        except:
+            pass
+        payload = {
+            "message": f"[Hermes] 🚨 Upload crash log {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}",
+            "content": content_b64,
+            "branch": GITHUB_BRANCH,
+        }
+        if sha:
+            payload["sha"] = sha
+        resp2 = await _gh_api("PUT", f"repos/{GITHUB_REPO}/contents/hermes_crash.log",
+                             data=_json.dumps(payload).encode('utf-8'))
+        if resp2.status in (200, 201):
+            log("✅ Crash log uploaded to GitHub")
+            os.remove('hermes_crash.log')
+            log("🗑️ Local crash log deleted after upload")
+        else:
+            log(f"⚠️ Crash log upload failed: HTTP {resp2.status}")
+    except Exception as e:
+        log_error(f"Crash log upload failed: {e}")
+
 @bot.event
 async def on_ready():
     global _startup_loaded
@@ -1342,6 +1383,9 @@ async def on_ready():
         log_error(f"Memory load FAILED (bot still working): {e}")
     
     _startup_loaded = True
+    
+    # Upload any previous crash log to GitHub (non-blocking)
+    asyncio.create_task(_upload_crash_log())
     
     # Start background GitHub sync loop
     asyncio.create_task(github_sync_loop())
