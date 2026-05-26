@@ -342,6 +342,33 @@ async def task_sync_loop():
             log_error(f"Task sync loop error: {e}")
 
 
+
+async def load_conv_log_local():
+    """Load conversation log from local backup file on startup (protect against crash)."""
+    global _conv_log
+    try:
+        import json as _json
+        with open("conv_log_backup.json", "r", encoding="utf-8") as _f:
+            local_data = _json.load(_f)
+        local_entries = local_data.get("entries", [])
+        with _conv_log_lock:
+            # Merge local backup with current _conv_log (keep newer entries)
+            seen = set()
+            for e in _conv_log:
+                seen.add((e.get("ts"), e.get("user_msg", "")[:50]))
+            for e in local_entries:
+                key = (e.get("ts"), e.get("user_msg", "")[:50])
+                if key not in seen:
+                    _conv_log.append(e)
+                    seen.add(key)
+            _conv_log.sort(key=lambda x: x.get("ts", ""))
+            _conv_log = _conv_log[-5000:]
+        log(f"[ConvLog] ✅ Restored {len(local_entries)} entries from local backup (last_update: {local_data.get('last_update', 'unknown')[:19]})")
+    except FileNotFoundError:
+        log("[ConvLog] No local backup file found, skipping")
+    except Exception as e:
+        log_error(f"[ConvLog] Local backup restore failed: {e}")
+
 async def gh_upload_conv_log():
     """Upload conversation log to GitHub (appends new entries)."""
     global _conv_log_dirty
@@ -368,15 +395,23 @@ async def gh_upload_conv_log():
                             merged_entries.append(e)
                             seen.add(key)
                     merged_entries.sort(key=lambda x: x.get("ts", ""))
-                    merged_entries = merged_entries[-500:]
+                    merged_entries = merged_entries[-5000:]
                     log(f"[ConvLog] Merged: {len(_conv_log)} local + {len(remote_entries)} remote = {len(merged_entries)} total")
             except Exception as me:
                 log(f"[ConvLog] Merge skipped (will overwrite): {me}")
 
+            # Load existing last_review_ts if present
+            _existing_last_review_ts = ""
+            try:
+                _existing_data = json.loads(base64.b64decode(remote["content"]).decode("utf-8"))
+                _existing_last_review_ts = _existing_data.get("last_review_ts", "")
+            except:
+                pass
             payload_data = json.dumps({
                 "entries": merged_entries,  # Use merged entries
                 "last_update": datetime.datetime.now().isoformat(),
-                "source": "hermes-lite"
+                "source": "hermes-lite",
+                "last_review_ts": _existing_last_review_ts  # Preserve last review timestamp
             }, ensure_ascii=False, indent=2)
             content_b64 = base64.b64encode(payload_data.encode()).decode()
 
@@ -411,7 +446,7 @@ async def gh_download_conv_log():
             log_data = json.loads(file_content)
             entries = log_data.get("entries", [])
             with _conv_log_lock:
-                _conv_log = entries[-500:]  # Keep last 500
+                _conv_log = entries[-5000:]  # Keep last 5000
             log(f"[ConvLog] ✅ Restored {len(_conv_log)} entries from GitHub (last_update: {log_data.get('last_update', 'unknown')[:19]})")
         else:
             log("[ConvLog] No existing conv_log on GitHub, starting fresh")
@@ -451,8 +486,8 @@ def log_conversation_entry(user_id, username, channel, user_msg, bot_response,
             entry["image_filenames"] = image_filenames[:5]
         _conv_log.append(entry)
         # Keep in-memory buffer bounded
-        if len(_conv_log) > 500:
-            _conv_log = _conv_log[-500:]
+        if len(_conv_log) > 5000:
+            _conv_log = _conv_log[-5000:]
         _conv_log_dirty = True
 
 
@@ -1449,6 +1484,7 @@ async def on_ready():
 
     # Phase 2: Restore conversation log from GitHub
     await gh_download_conv_log()
+    await load_conv_log_local()  # 从本地备份恢复（防止GitHub恢复前崩溃）
 
     # Phase 2: Start conversation log sync loop
     asyncio.create_task(conv_log_sync_loop())
