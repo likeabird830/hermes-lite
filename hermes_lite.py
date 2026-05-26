@@ -430,7 +430,8 @@ async def conv_log_sync_loop():
             log_error(f"Conv log sync loop error: {e}")
 
 
-def log_conversation_entry(user_id, username, channel, user_msg, bot_response, has_image=False):
+def log_conversation_entry(user_id, username, channel, user_msg, bot_response,
+                          has_image=False, image_urls=None, image_filenames=None):
     """Add a conversation summary entry to the in-memory log."""
     global _conv_log, _conv_log_dirty
     with _conv_log_lock:
@@ -444,6 +445,10 @@ def log_conversation_entry(user_id, username, channel, user_msg, bot_response, h
             "has_image": has_image,
             "msg_len": len(bot_response),
         }
+        if image_urls:
+            entry["image_urls"] = image_urls[:5]
+        if image_filenames:
+            entry["image_filenames"] = image_filenames[:5]
         _conv_log.append(entry)
         # Keep in-memory buffer bounded
         if len(_conv_log) > 500:
@@ -1505,15 +1510,25 @@ async def on_message(message):
                 
                 break  # Only process first valid image
     
-    # If content was empty (user just sent an image with no text), set a fallback prompt
+    # If content was empty (user just sent image(s) with no text), set a descriptive prompt
     if not content and message.attachments:
-        content = "请看看这张图片"  # Fallback so we don't hit the empty-content greeting
+        fnames = [a.filename for a in message.attachments[:5]]
+        content = f"[图片] {', '.join(fnames)}"
     
     if not content:
         await message.reply("你好！我是 Hermes 🧠 有记忆力的 AI 助手。问我任何事吧！")
         return
-    
     user_id = str(message.author.id)
+    
+    # Pre-collect image info for conversation logging (do this ONCE before API call)
+    _log_image_urls = []
+    _log_image_filenames = []
+    _has_any_image = False
+    for att in message.attachments:
+        if att.content_type and att.content_type.split(';')[0].strip() in _IMAGE_MIME_TYPES:
+            _has_any_image = True
+            _log_image_urls.append(att.url)
+            _log_image_filenames.append(att.filename)
     
     try:
         await message.add_reaction('👀')
@@ -1561,23 +1576,30 @@ async def on_message(message):
             if len(response) > 1900:
                 response = response[:1900] + "..."
             await message.reply(response)
-            await message.add_reaction('✅')
-            
-            add_conversation_msg(user_id, "user", content)
-            add_conversation_msg(user_id, "assistant", response)
-            touch_profile(user_id)
-            
-            log(f"[#{_message_count}] Reply sent ✅")
 
             # Phase 2: Log conversation summary for weekly review
+            # MUST be before add_reaction (which can fail and skip logging)
             log_conversation_entry(
                 user_id=user_id,
                 username=str(message.author),
                 channel=getattr(message.channel, 'name', 'DM'),
                 user_msg=content,
                 bot_response=response,
-                has_image=bool(image_description)
+                has_image=_has_any_image,
+                image_urls=_log_image_urls if _log_image_urls else None,
+                image_filenames=_log_image_filenames if _log_image_filenames else None,
             )
+
+            try:
+                await message.add_reaction('✅')
+            except Exception as _re:
+                log(f"[#{_message_count}] add_reaction failed (non-critical): {_re}")
+
+            add_conversation_msg(user_id, "user", content)
+            add_conversation_msg(user_id, "assistant", response)
+            touch_profile(user_id)
+            
+            log(f"[#{_message_count}] Reply sent ✅")
 
             # Self-evolution: NON-BLOCKING background task
             asyncio.create_task(extract_memories_bg(user_id, content, response))
